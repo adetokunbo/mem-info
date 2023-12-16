@@ -1,12 +1,15 @@
 cabal-version:      3.0
 name:               hs-core-mem
 version:            0.1.0.0
-synopsis:           A terse description of this package
+synopsis:           Report the core memory usage of a program
 description:
-  Expands on the terse description above; here is how to do a link [TmpProc](https://hackage.haskell.org/package/tmp-proc-0.5.3.0/docs/System-TmpProc.html)
-
-  - a fine point
-  - an even better one
+  A utility to accurately report the core memory usage of a program
+  This is a clone of
+  [ps_mem](https://github.com/pixelb/ps_mem/blob/master/README.md) the python
+  utility
+  The package provides
+  * an executable that mimics *ps_mem*
+  * a library that can to provide similar functionality within haskell programs
 
 license:            BSD-3-Clause
 license-file:       LICENSE
@@ -14,12 +17,9 @@ author:             Tim Emiola
 maintainer:         adetokunbo@emio.la
 category:           Web
 homepage:           https://github.com/adetokunbo/hs-core-mem#readme
-bug-reports:
-  https://github.com/adetokunbo/hs-core-mem/issues
-
+bug-reports:        https://github.com/adetokunbo/hs-core-mem/issues
 build-type:         Simple
-extra-source-files:
-  ChangeLog.md
+extra-source-files: ChangeLog.md
 
 source-repository head
   type:     git
@@ -29,11 +29,21 @@ library
   exposed-modules:  System.Process.CoreMem
   hs-source-dirs:   src
   build-depends:
-    , base                        >=4.10 && <5
-    , hspec                       >=2.7.0 && <2.12.0
+    , base                  >=4.14   && <5
+    , bytestring
+    , containers
+    , directory
+    , filepath
+    , fmt
+    , hashable
+    , hspec                 >=2.7.0  && <2.12.0
+    , optparse-applicative  >=0.18.1 && <0.19
+    , text
+    , unix
 
   default-language: Haskell2010
-  ghc-options:      -Wall -Wincomplete-uni-patterns -Wpartial-fields -fwarn-tabs
+  ghc-options:
+    -Wall -Wincomplete-uni-patterns -Wpartial-fields -fwarn-tabs
 
 test-suite test
   type:             exitcode-stdio-1.0
@@ -44,27 +54,18 @@ test-suite test
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N -Wall -fwarn-tabs
   build-depends:
     , base
-    , hspec           >=2.1
+    , hs-core-mem
+    , hspec        >=2.1
     , QuickCheck
-    , hs-core-mem
 
-Flag build-the-readme
-  description: Allow the readme to build
-  default:     False
-
-
-test-suite readme
-  if os(windows) || !flag(build-the-readme)
-    buildable: False
-  else
-    buildable: True
-
-  build-tool-depends: markdown-unlit:markdown-unlit
-  type:             exitcode-stdio-1.0
-  ghc-options:        -pgmL markdown-unlit -threaded -rtsopts -with-rtsopts=-N -Wall -Wincomplete-patterns -Wpartial-fields
-  main-is:            README.lhs
-  default-language:   Haskell2010
+-- cmdline runs the hs-core-mem command
+executable core-mem
+  main-is:          CmdLine.hs
+  hs-source-dirs:   exe
+  default-language: Haskell2010
   build-depends:
-    , base
+    , base               >=4.14     && <5
     , hs-core-mem
-    , hspec
+  ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+  ghc-options:
+    -Wall -Wincomplete-uni-patterns -Wpartial-fields -fwarn-tabs

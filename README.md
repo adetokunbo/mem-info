@@ -6,9 +6,13 @@
 [![Hackage Dependencies][hackage-deps-badge]][hackage-deps]
 [![BSD3](https://img.shields.io/badge/license-BSD3-green.svg?dummy)](https://github.com/adetokunbo/hs-core-mem/blob/master/LICENSE)
 
-This is a terse statement that describes the `hs-core-mem` library
+A utility to accurately report the core memory usage of a program
 
-This is a slightly longer statement that expands on the previous one.
+This a clone of `ps_mem` the python utility, with key functionality exposed as a
+library so that it can be used from other haskell programs.
+
+There is also a executable to mimics the python program, but which will
+eventually take on additional features.
 
 [hackage-deps-badge]: <https://img.shields.io/hackage-deps/v/hs-core-mem.svg>
 [hackage-deps]:       <http://packdeps.haskellers.com/feed?needle=hs-core-mem>
@@ -18,48 +22,5 @@ This is a slightly longer statement that expands on the previous one.
 ## Example
 
 ```haskell
-{-# LANGUAGE OverloadedStrings #-}
-
-import System.Environment
-  ( lookupEnv,
-    setEnv,
-    unsetEnv
-   )
-import Text.Read   (readEither)
-import Test.Hspec
-import Top.Sample.Mod
-
-spec :: Spec
-spec = describe "Checking the functions in Top.Sample.Mod" $ before_ clearIt $ do
-  context "endsThen" $ do
-    it "should implement the behaviour of the other functions easily" $ do
-      setIt
-      getIt `endsThen` (== (Just "1"))
-      clearIt
-      getIt `endsThen` (== Nothing)
-      getAsInt `endsThen` (== (Left "not set!"))
-      setIt
-      getAsInt `endsThen` (== (Right 1))
-
-getIt :: IO (Maybe String)
-getIt = lookupEnv envName
-
-getAsInt :: IO (Either String Int)
-getAsInt = maybe (Left "not set!") readEither <$> getIt
-
-setIt :: IO ()
-setIt = setEnv envName "1"
-
-setNotInt :: IO ()
-setNotInt = setEnv envName "foo"
-
-clearIt :: IO ()
-clearIt = unsetEnv envName
-
-envName :: String
-envName = "AN_ENV_VAR"
-
-main :: IO ()
-main = hspec spec
 
 ```

@@ -2,7 +2,7 @@
 
 `hs-core-mem` uses [PVP Versioning][1].
 
-## 0.1.0.0 -- 2023-09-26
+## 0.1.0.0 -- 2023-12-13
 
 * Initial version.
 

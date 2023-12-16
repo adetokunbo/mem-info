@@ -54,9 +54,12 @@ import Text.Read (readEither, readMaybe)
 
 
 printProcs :: (Choices, Target) -> IO ()
-printProcs ct@(_, target) = do
+printProcs ct@(cs, target) = do
   foldlEitherM (readNameAndStats ct) (NE.toList $ tPids target) >>= \case
     Left err -> error $ show err
+    Right xs | choiceByPid cs -> do
+      let withId (x, y, z) = (x, (x, y), z)
+      mapM_ print $ Map.toList $ aggregate target $ map withId xs
     Right xs -> mapM_ print $ Map.toList $ aggregate target xs
   printAccuracy target
 
@@ -84,7 +87,7 @@ readNameAndStats (cs, target) pid = do
 data Choices = Choices
   { choiceSplitArgs :: !Bool
   , choiceOnlyTotal :: !Bool
-  , choiceDiscriminateByPid :: !Bool
+  , choiceByPid :: !Bool
   , choiceShowSwap :: !Bool
   , choiceWatchSecs :: !(Maybe Natural)
   , choicePidsToShow :: !(Maybe (NonEmpty ProcessID))

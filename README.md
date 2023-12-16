@@ -18,9 +18,3 @@ eventually take on additional features.
 [hackage-deps]:       <http://packdeps.haskellers.com/feed?needle=hs-core-mem>
 [hackage-badge]:      <https://img.shields.io/hackage/v/hs-core-mem.svg>
 [hackage]:            <https://hackage.haskell.org/package/hs-core-mem>
-
-## Example
-
-```haskell
-
-```

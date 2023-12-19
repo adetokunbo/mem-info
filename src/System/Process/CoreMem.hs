@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -16,6 +17,8 @@ processes
 module System.Process.CoreMem (
   getChoices,
   printProcs,
+  fmtMem,
+  fmtMemBytes,
 ) where
 
 import Control.Exception (handle, throwIO)
@@ -37,7 +40,16 @@ import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Text.IO as Text
 import qualified Data.Text.Read as Text
-import Fmt ((+|), (|+), (|++|))
+import Fmt (
+  fixedF,
+  padBothF,
+  padLeftF,
+  (+|),
+  (+||),
+  (|+),
+  (|++|),
+  (||+),
+ )
 import Numeric.Natural
 import Options.Applicative
 import Options.Applicative.NonEmpty (some1)
@@ -56,19 +68,25 @@ import Text.Read (readEither, readMaybe)
 
 printProcs :: (Choices, Target) -> IO ()
 printProcs ct@(cs, target) = do
+  let showSwap = choiceShowSwap cs
+      print' (name, stats) = Text.putStrLn $ fmtCmdTotal showSwap name stats
   foldlEitherM (readNameAndStats ct) (NE.toList $ tPids target) >>= \case
     Left err -> error $ show err
     Right xs | choiceByPid cs -> do
-      let withId (x, y, z) = (x, (x, y), z)
-      mapM_ print $ Map.toList $ aggregate target $ map withId xs
-    Right xs -> mapM_ print $ Map.toList $ aggregate target xs
+      let withPid (pid, name, stats) = ((pid, name), stats)
+      Text.putStrLn $ fmtAsHeader showSwap
+      mapM_ print' $ Map.toList $ aggregate target $ map withPid xs
+    Right xs -> do
+      let dropId (_, name, stats) = (name, stats)
+      Text.putStrLn $ fmtAsHeader showSwap
+      mapM_ print' $ Map.toList $ aggregate target $ map dropId xs
   printAccuracy target
 
 
 readNameAndStats ::
   (Choices, Target) ->
   ProcessID ->
-  IO (Either LostPid (ProcessID, CmdName, MemStats))
+  IO (Either LostPid (ProcessID, Text, PerProc))
 readNameAndStats (cs, target) pid = do
   let namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
   namer pid >>= \case
@@ -669,70 +687,15 @@ data SwapAccuracy
 type Accuracy = (RamAccuracy, SwapAccuracy)
 
 
-data CmdStats = CmdStats
-  { csShared :: !Int
-  , csSharedHuge :: !Int
-  , csPrivate :: !Int
-  , csCount :: !Int
-  , csSwap :: !Int
-  , csMemIds :: !(Set Int)
+data SubTotal = SubTotal
+  { stShared :: !Int
+  , stSharedHuge :: !Int
+  , stPrivate :: !Int
+  , stCount :: !Int
+  , stSwap :: !Int
+  , stMemIds :: !(Set Int)
   }
   deriving (Eq, Show)
-
-
-type CmdName = Text
-
-
-aggregate ::
-  (Show a, Ord a) =>
-  Target ->
-  [(ProcessID, a, MemStats)] ->
-  Map a CmdStats
-aggregate target = foldr (aggregateStep target) mempty
-
-
-aggregateStep ::
-  Ord a =>
-  Target ->
-  (ProcessID, a, MemStats) ->
-  Map a CmdStats ->
-  Map a CmdStats
-aggregateStep target (pid_, cmd, mem) acc =
-  let combinePrivate next prev | tHasPss target = next + prev
-      combinePrivate next prev = max next prev
-      nextCs =
-        CmdStats
-          { csShared = msShared mem
-          , csSharedHuge = msSharedHuge mem
-          , csCount = 1
-          , csPrivate = msPrivate mem
-          , csSwap = msSwap mem
-          , csMemIds = Set.singleton $ msMemId mem
-          }
-      update' next prev =
-        prev
-          { csShared = csShared next + csShared prev
-          , csSharedHuge = max (csSharedHuge next) (csSharedHuge prev)
-          , csPrivate = combinePrivate (csPrivate next) (csPrivate prev)
-          , csCount = csCount next + csCount prev
-          , csSwap = csSwap next + csSwap prev
-          , csMemIds = Set.union (csMemIds next) (csMemIds prev)
-          }
-   in Map.insertWith update' cmd nextCs acc
-
-
-rollup :: Target -> CmdStats -> CmdStats
-rollup target cs =
-  let areThreads = areThreadsNotProcs cs
-      hasPss = tHasPss target
-      reducedPrivate = csPrivate cs `div` csCount cs
-      reducedShared = csShared cs `div` csCount cs
-      newPrivate = if areThreads then reducedPrivate else csPrivate cs
-      newShared = if areThreads && hasPss then reducedShared else csShared cs
-   in cs
-        { csShared = newShared + csSharedHuge cs
-        , csPrivate = newPrivate + newShared + csSharedHuge cs
-        }
 
 
 -- If a process is invoked with clone using flags CLONE_VM and not CLONE_THREAD
@@ -741,8 +704,134 @@ rollup target cs =
 --
 -- This is detected by computing the memId has the hash of lines for the proc
 -- read from its smaps file.
-areThreadsNotProcs :: CmdStats -> Bool
-areThreadsNotProcs cs = Set.size (csMemIds cs) == 1 && csCount cs > 1
+threadsNotProcs :: SubTotal -> Bool
+threadsNotProcs cs = Set.size (stMemIds cs) == 1 && stCount cs > 1
+
+
+aggregateStep ::
+  Ord a =>
+  Target ->
+  Map a SubTotal ->
+  (a, PerProc) ->
+  Map a SubTotal
+aggregateStep target acc (cmd, mem) =
+  let combinePrivate next prev | tHasPss target = next + prev
+      combinePrivate next prev = max next prev
+      nextSt =
+        SubTotal
+          { stShared = ppShared mem
+          , stSharedHuge = ppSharedHuge mem
+          , stCount = 1
+          , stPrivate = ppPrivate mem
+          , stSwap = ppSwap mem
+          , stMemIds = Set.singleton $ ppMemId mem
+          }
+      update' next prev =
+        prev
+          { stShared = stShared next + stShared prev
+          , stSharedHuge = max (stSharedHuge next) (stSharedHuge prev)
+          , stPrivate = combinePrivate (stPrivate next) (stPrivate prev)
+          , stCount = stCount next + stCount prev
+          , stSwap = stSwap next + stSwap prev
+          , stMemIds = Set.union (stMemIds next) (stMemIds prev)
+          }
+   in Map.insertWith update' cmd nextSt acc
+
+
+-- | Represents the memory totals for each command
+data CmdTotal = CmdTotal
+  { ctShared :: !Int
+  , ctPrivate :: !Int
+  , ctCount :: !Int
+  , ctSwap :: !Int
+  }
+  deriving (Eq, Show)
+
+
+aggregate ::
+  (AsCmdName a, Ord a) =>
+  Target ->
+  [(a, PerProc)] ->
+  Map a CmdTotal
+aggregate target = Map.map (rollup target) . foldl' (aggregateStep target) mempty
+
+
+rollup :: Target -> SubTotal -> CmdTotal
+rollup target st =
+  let areThreads = threadsNotProcs st
+      hasPss = tHasPss target
+      reducedPrivate = stPrivate st `div` stCount st
+      reducedShared = stShared st `div` stCount st
+      newPrivate = if areThreads then reducedPrivate else stPrivate st
+      newShared = if areThreads && hasPss then reducedShared else stShared st
+   in CmdTotal
+        { ctShared = newShared + stSharedHuge st
+        , ctPrivate = newPrivate + newShared + stSharedHuge st
+        , ctSwap = stSwap st
+        , ctCount = stCount st
+        }
+
+
+fmtCmdTotal :: AsCmdName a => Bool -> a -> CmdTotal -> Text
+fmtCmdTotal showSwap name ct =
+  let
+    padl = padLeftF 11 ' ' . fmtMem
+    private = padl $ ctPrivate ct - ctShared ct
+    shared = padl $ ctShared ct
+    all' = padl $ ctPrivate ct
+    swap' = padl $ ctSwap ct
+    name' = cmdWithCount name $ ctCount ct
+    ram = "" +| private |+ " + " +| shared |+ " = " +| all' |+ ""
+    label = "" +| name' |+ ""
+   in
+    if showSwap
+      then ram <> ("" +| swap' |+ "\t") <> label
+      else ram <> "\t" <> label
+
+
+data Power = Ki | Mi | Gi | Ti deriving (Eq, Show, Ord, Enum, Bounded)
+
+
+fmtMem :: Int -> Text
+fmtMem = fmtMem' Ki . fromIntegral
+
+
+fmtMem' :: Power -> Float -> Text
+fmtMem' =
+  let doFmt p x = "" +| fixedF 1 x |+ " " +|| p ||+ "B"
+      go p x | p == maxBound = doFmt p x
+      go p x | x > 1000 = fmtMem' (succ p) (x / 1024)
+      go p x = doFmt p x
+   in go
+
+
+fmtMemBytes :: Int -> Text
+fmtMemBytes x = "" +| x * 1024 |+ ""
+
+
+hdrPrivate, hdrShared, hdrRamUsed, hdrSwapUsed, hdrProgram :: Text
+hdrPrivate = "Private"
+hdrShared = "Shared"
+hdrRamUsed = "RAM Used"
+hdrSwapUsed = "Swap Used"
+hdrProgram = "Program"
+
+
+fmtAsHeader :: Bool -> Text
+fmtAsHeader showSwap =
+  let
+    padb = padBothF 10 ' '
+    private = padb hdrPrivate
+    shared = padb hdrShared
+    all' = padb hdrRamUsed
+    name' = padb hdrProgram
+    swap' = padb hdrSwapUsed
+    ram = "" +| private |+ " + " +| shared |+ " = " +| all' |+ ""
+    label = "" +| name' |+ ""
+   in
+    if showSwap
+      then ram <> ("" +| swap' |+ "\t") <> label
+      else ram <> "\t" <> label
 
 
 printAccuracy :: Target -> IO ()
@@ -777,6 +866,24 @@ readAccuracy target = do
           best = (ExactMem, ExactSwap)
       pure $ if tHasSwapPss target then best else alt
     _ -> pure (ExactForIsolatedMem, NoSwap)
+
+
+cmdWithCount :: AsCmdName a => a -> Int -> Text
+cmdWithCount cmd count = "" +| asCmdName cmd |+ " (" +| count |+ ")"
+
+
+-- | Represents a label that is as the cmd name in the report output
+class AsCmdName a where
+  -- Convert the data to text for output
+  asCmdName :: a -> Text
+
+
+instance AsCmdName Text where
+  asCmdName = id
+
+
+instance AsCmdName (ProcessID, Text) where
+  asCmdName (pid, name) = "" +| name |+ " [" +| toInteger pid |+ "]"
 
 
 foldlEitherM ::

@@ -775,7 +775,7 @@ rollup target st =
 fmtCmdTotal :: AsCmdName a => Bool -> a -> CmdTotal -> Text
 fmtCmdTotal showSwap name ct =
   let
-    padl = padLeftF 11 ' ' . fmtMem
+    padl = padLeftF columnWidth ' ' . fmtMem
     private = padl $ ctPrivate ct - ctShared ct
     shared = padl $ ctShared ct
     all' = padl $ ctPrivate ct
@@ -820,7 +820,7 @@ hdrProgram = "Program"
 fmtAsHeader :: Bool -> Text
 fmtAsHeader showSwap =
   let
-    padb = padBothF 10 ' '
+    padb = padBothF columnWidth ' '
     private = padb hdrPrivate
     shared = padb hdrShared
     all' = padb hdrRamUsed
@@ -898,3 +898,7 @@ foldlEitherM f xs =
           Left err -> pure $ Left err
           Right y -> pure $ Right (y : acc)
    in foldlM go (Right []) xs
+
+
+columnWidth :: Int
+columnWidth = 10

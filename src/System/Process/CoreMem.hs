@@ -22,7 +22,7 @@ module System.Process.CoreMem (
 ) where
 
 import Control.Exception (handle, throwIO)
-import Control.Monad (filterM, unless)
+import Control.Monad (filterM, unless, when)
 import qualified Data.ByteString as BS
 import Data.Char (isSpace)
 import Data.Foldable (foldlM)
@@ -70,16 +70,23 @@ printProcs :: (Choices, Target) -> IO ()
 printProcs ct@(cs, target) = do
   let showSwap = choiceShowSwap cs
       print' (name, stats) = Text.putStrLn $ fmtCmdTotal showSwap name stats
+      shouldShowTotal = (showSwap && tHasSwapPss target) || tHasPss target
   foldlEitherM (readNameAndStats ct) (NE.toList $ tPids target) >>= \case
     Left err -> error $ show err
     Right xs | choiceByPid cs -> do
       let withPid (pid, name, stats) = ((pid, name), stats)
+          totals = aggregate target $ map withPid xs
+          overall = overallTotals $ Map.elems totals
       Text.putStrLn $ fmtAsHeader showSwap
-      mapM_ print' $ Map.toList $ aggregate target $ map withPid xs
+      mapM_ print' $ Map.toList totals
+      when shouldShowTotal $ Text.putStrLn $ fmtOverall showSwap overall
     Right xs -> do
       let dropId (_, name, stats) = (name, stats)
+          totals = aggregate target $ map dropId xs
+          overall = overallTotals $ Map.elems totals
       Text.putStrLn $ fmtAsHeader showSwap
-      mapM_ print' $ Map.toList $ aggregate target $ map dropId xs
+      mapM_ print' $ Map.toList totals
+      when shouldShowTotal $ Text.putStrLn $ fmtOverall showSwap overall
   printAccuracy target
 
 
@@ -746,6 +753,28 @@ data CmdTotal = CmdTotal
   , ctSwap :: !Int
   }
   deriving (Eq, Show)
+
+
+overallTotals :: [CmdTotal] -> (Int, Int)
+overallTotals cts =
+  let step (private, swap) ct = (private + ctPrivate ct, swap + ctSwap ct)
+   in foldl' step (0, 0) cts
+
+
+fmtOverall :: Bool -> (Int, Int) -> Text
+fmtOverall showSwap (private, swap) =
+  let
+    rimLength = if showSwap then 46 else 36
+    gapLength = 26
+    top = Text.replicate rimLength "-"
+    gap = Text.replicate gapLength " "
+    bottom = Text.replicate rimLength "="
+    padl = padLeftF columnWidth ' ' . fmtMem
+    withSwap = "" +| gap |++| padl private |++| padl swap |+ ""
+    noSwap = "" +| gap |++| padl private |+ ""
+    out = if showSwap then withSwap else noSwap
+   in
+    Text.unlines [top, out, bottom]
 
 
 aggregate ::

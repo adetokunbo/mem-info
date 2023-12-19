@@ -167,7 +167,7 @@ parseChoicesPidsToShow =
     option positiveNum $
       short 'p'
         <> long "pids"
-        <> metavar "<pid>[ -p pid2 ... -p pidN ]"
+        <> metavar "<pid1> [ -p pid2 ... -p pidN ]"
         <> help "Only show memory usage of the specified PIDs"
 
 
@@ -175,8 +175,8 @@ parseSplitArgs :: Parser Bool
 parseSplitArgs =
   switch $
     short 's'
-      <> long "split-parses"
-      <> help "Show and separate by, all command line parseuments"
+      <> long "split-args"
+      <> help "Show and separate by all command line arguments"
 
 
 parseOnlyTotal :: Parser Bool

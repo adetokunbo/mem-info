@@ -24,6 +24,7 @@ import qualified Data.ByteString as BS
 import Data.Char (isSpace)
 import Data.Foldable (foldlM)
 import Data.Hashable (hash)
+import Data.List (foldl')
 import Data.List.NonEmpty (NonEmpty, nonEmpty)
 import qualified Data.List.NonEmpty as NE
 import Data.Map.Strict (Map)
@@ -406,12 +407,12 @@ fromLines :: ProcessID -> [Text] -> Either LostPid StatusInfo
 fromLines pid statusLines =
   let
     parseLine key l = Text.strip <$> Text.stripPrefix (key <> ":") l
-    mkStep prefix l acc = case acc of
+    mkStep prefix acc l = case acc of
       Nothing -> parseLine prefix l
       found -> found
     name = maybe (Left $ NoStatusCmd pid) Right name'
-    name' = foldr (mkStep "Name") Nothing statusLines
-    ppidTxt = foldr (mkStep "PPid") Nothing statusLines
+    name' = foldl' (mkStep "Name") Nothing statusLines
+    ppidTxt = foldl' (mkStep "PPid") Nothing statusLines
     parsePpid = readMaybe . Text.unpack
     ppId = maybe (Left $ NoStatusParent pid) Right (ppidTxt >>= parsePpid)
    in
@@ -466,7 +467,7 @@ takeTillNull :: Text -> Text
 takeTillNull = Text.takeWhile (not . isNull)
 
 
-readMemStats :: Target -> ProcessID -> IO (Either LostPid MemStats)
+readMemStats :: Target -> ProcessID -> IO (Either LostPid PerProc)
 readMemStats target pid = do
   statmExists <- doesFileExist $ pidPath "statm" pid
   if
@@ -475,23 +476,23 @@ readMemStats target pid = do
       | otherwise -> pure $ Left $ NoStatm pid
 
 
-readFromStatm :: KernelVersion -> ProcessID -> IO (Either LostPid MemStats)
+readFromStatm :: KernelVersion -> ProcessID -> IO (Either LostPid PerProc)
 readFromStatm version pid = do
   let noShared = unknownShared version
       mkStat rss _shared
         | noShared =
-            memZero
-              { msPrivate = rss * pageSizeKiB
-              , msMemId = fromInteger $ toInteger pid
+            ppZero
+              { ppPrivate = rss * pageSizeKiB
+              , ppMemId = fromInteger $ toInteger pid
               }
       mkStat rss shared =
-        memZero
-          { msShared = shared * pageSizeKiB
-          , msPrivate = (rss - shared) * pageSizeKiB
-          , msMemId = fromInteger $ toInteger pid
+        ppZero
+          { ppShared = shared * pageSizeKiB
+          , ppPrivate = (rss - shared) * pageSizeKiB
+          , ppMemId = fromInteger $ toInteger pid
           }
   statm <- readUtf8Text $ pidPath "statm" pid
-  case readInts $ Text.words statm of
+  case parseStatm $ Text.words statm of
     Right (_size : rss : shared : _xs) -> pure $ Right $ mkStat rss shared
     Right _ -> pure $ Left $ BadStatm pid
     Left _ -> pure $ Left $ BadStatm pid
@@ -502,51 +503,51 @@ pageSizeKiB :: Int
 pageSizeKiB = 4
 
 
-readInts :: [Text] -> Either String [Int]
-readInts txts =
+parseStatm :: [Text] -> Either String [Int]
+parseStatm txts =
   let
-    step txt (Right acc) = ((\x -> Right (x : acc)) =<< readEither (Text.unpack txt))
-    step _ err = err
+    step (Right acc) txt = ((\x -> Right (x : acc)) =<< readEither (Text.unpack txt))
+    step err _ = err
    in
-    foldr step (Right []) txts
+    foldl' step (Right []) txts
 
 
--- | Represents the memory summary for a process
-data MemStats = MemStats
-  { msPrivate :: !Int
-  , msShared :: !Int
-  , msSharedHuge :: !Int
-  , msSwap :: !Int
-  , msMemId :: !Int
+-- | Represents the memory totals for an individual process
+data PerProc = PerProc
+  { ppPrivate :: !Int
+  , ppShared :: !Int
+  , ppSharedHuge :: !Int
+  , ppSwap :: !Int
+  , ppMemId :: !Int
   }
   deriving (Eq, Show)
 
 
-memZero :: MemStats
-memZero =
-  MemStats
-    { msPrivate = 0
-    , msShared = 0
-    , msSharedHuge = 0
-    , msSwap = 0
-    , msMemId = 0
+ppZero :: PerProc
+ppZero =
+  PerProc
+    { ppPrivate = 0
+    , ppShared = 0
+    , ppSharedHuge = 0
+    , ppSwap = 0
+    , ppMemId = 0
     }
 
 
-fromSmap :: SmapStats -> MemStats
+fromSmap :: SmapStats -> PerProc
 fromSmap ss =
   let pssTweak = ssPssCount ss `div` 2 -- add ~0.5 per line counter truncation
       pssShared = ssPss ss + pssTweak - ssPrivate ss
-   in MemStats
-        { msSwap = if ssHasSwapPss ss then ssSwapPss ss else ssSwap ss
-        , msShared = if ssHasPss ss then pssShared else ssShared ss
-        , msSharedHuge = ssSharedHuge ss
-        , msPrivate = ssPrivate ss + ssPrivateHuge ss
-        , msMemId = ssMemId ss
+   in PerProc
+        { ppSwap = if ssHasSwapPss ss then ssSwapPss ss else ssSwap ss
+        , ppShared = if ssHasPss ss then pssShared else ssShared ss
+        , ppSharedHuge = ssSharedHuge ss
+        , ppPrivate = ssPrivate ss + ssPrivateHuge ss
+        , ppMemId = ssMemId ss
         }
 
 
--- | Represents data accumulated by reading @PROC_ROOT@/smaps
+-- | Represents per-process data from  @PROC_ROOT@/smaps
 data SmapStats = SmapStats
   { ssPss :: !Int
   , ssPssCount :: !Int
@@ -563,8 +564,8 @@ data SmapStats = SmapStats
   deriving (Eq, Show)
 
 
-smapZero :: SmapStats
-smapZero =
+ssZero :: SmapStats
+ssZero =
   SmapStats
     { ssPss = 0
     , ssPssCount = 0
@@ -583,7 +584,7 @@ smapZero =
 readSmapStats :: Target -> ProcessID -> IO SmapStats
 readSmapStats _target pid = do
   smapLines <- readSmaps pid
-  let stats = foldr incrMemStats smapZero smapLines
+  let stats = foldl' incrSmapStats ssZero smapLines
   pure $ stats {ssMemId = hash smapLines}
 
 
@@ -618,23 +619,23 @@ incrPrivateHuge ms = maybe ms $ \n -> ms {ssPrivateHuge = n + ssPrivateHuge ms}
 incrSharedHuge ms = maybe ms $ \n -> ms {ssSharedHuge = n + ssSharedHuge ms}
 
 
-incrMemStats :: Text -> SmapStats -> SmapStats
-incrMemStats l acc =
+incrSmapStats :: SmapStats -> Text -> SmapStats
+incrSmapStats acc l =
   if
-      | Text.isPrefixOf "Private_Hugetlb:" l -> incrPrivateHuge acc $ memValMb l
-      | Text.isPrefixOf "Shared_Hugetlb:" l -> incrSharedHuge acc $ memValMb l
-      | Text.isPrefixOf "Shared" l -> incrShared acc $ memValMb l
-      | Text.isPrefixOf "Private" l -> incrPrivate acc $ memValMb l
+      | Text.isPrefixOf "Private_Hugetlb:" l -> incrPrivateHuge acc $ smapValMb l
+      | Text.isPrefixOf "Shared_Hugetlb:" l -> incrSharedHuge acc $ smapValMb l
+      | Text.isPrefixOf "Shared" l -> incrShared acc $ smapValMb l
+      | Text.isPrefixOf "Private" l -> incrPrivate acc $ smapValMb l
       | Text.isPrefixOf "Pss:" l ->
           let acc' = acc {ssHasPss = True, ssPssCount = 1 + ssPssCount acc}
-           in incrPss acc' $ memValMb l
-      | Text.isPrefixOf "Swap:" l -> incrSwap acc $ memValMb l
-      | Text.isPrefixOf "SwapPss:" l -> incrSwapPss (acc {ssHasSwapPss = True}) $ memValMb l
+           in incrPss acc' $ smapValMb l
+      | Text.isPrefixOf "Swap:" l -> incrSwap acc $ smapValMb l
+      | Text.isPrefixOf "SwapPss:" l -> incrSwapPss (acc {ssHasSwapPss = True}) $ smapValMb l
       | otherwise -> acc
 
 
-memValMb :: Read a => Text -> Maybe a
-memValMb l =
+smapValMb :: Read a => Text -> Maybe a
+smapValMb l =
   let memWords = Text.words l
       readVal (_ : x : _) = readMaybe $ Text.unpack x
       readVal _ = Nothing

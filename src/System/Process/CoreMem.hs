@@ -74,11 +74,18 @@ printProcs ct@(cs, target) = do
       onlyTotal = choiceOnlyTotal cs
       reportSwapFlaw = Text.putStrLn . fmtSwapFlaw onlyTotal
       reportRamFlaw = Text.putStrLn . fmtRamFlaw onlyTotal
+      reportTotal = Text.putStrLn . fmtMemBytes
       printReport totals = do
         let overall = overallTotals $ Map.elems totals
-        Text.putStrLn $ fmtAsHeader showSwap
-        mapM_ print' $ Map.toList totals
-        when shouldShowTotal $ Text.putStrLn $ fmtOverall showSwap overall
+            (private, swap) = overall
+        if onlyTotal
+          then do
+            when (showSwap && tHasSwapPss target) $ reportTotal swap
+            when (not showSwap && tHasPss target) $ reportTotal private
+          else do
+            Text.putStrLn $ fmtAsHeader showSwap
+            mapM_ print' $ Map.toList totals
+            when shouldShowTotal $ Text.putStrLn $ fmtOverall showSwap overall
 
   foldlEitherM (readNameAndStats ct) (NE.toList $ tPids target) >>= \case
     Left err -> error $ show err

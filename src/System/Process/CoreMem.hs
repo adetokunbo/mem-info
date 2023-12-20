@@ -71,23 +71,29 @@ printProcs ct@(cs, target) = do
   let showSwap = choiceShowSwap cs
       print' (name, stats) = Text.putStrLn $ fmtCmdTotal showSwap name stats
       shouldShowTotal = (showSwap && tHasSwapPss target) || tHasPss target
+      onlyTotal = choiceOnlyTotal cs
+      reportSwapFlaw = Text.putStrLn . fmtSwapFlaw onlyTotal
+      reportRamFlaw = Text.putStrLn . fmtRamFlaw onlyTotal
+      printReport totals = do
+        let overall = overallTotals $ Map.elems totals
+        Text.putStrLn $ fmtAsHeader showSwap
+        mapM_ print' $ Map.toList totals
+        when shouldShowTotal $ Text.putStrLn $ fmtOverall showSwap overall
+
   foldlEitherM (readNameAndStats ct) (NE.toList $ tPids target) >>= \case
     Left err -> error $ show err
     Right xs | choiceByPid cs -> do
       let withPid (pid, name, stats) = ((pid, name), stats)
-          totals = aggregate target $ map withPid xs
-          overall = overallTotals $ Map.elems totals
-      Text.putStrLn $ fmtAsHeader showSwap
-      mapM_ print' $ Map.toList totals
-      when shouldShowTotal $ Text.putStrLn $ fmtOverall showSwap overall
+      printReport $ aggregate target $ map withPid xs
     Right xs -> do
       let dropId (_, name, stats) = (name, stats)
-          totals = aggregate target $ map dropId xs
-          overall = overallTotals $ Map.elems totals
-      Text.putStrLn $ fmtAsHeader showSwap
-      mapM_ print' $ Map.toList totals
-      when shouldShowTotal $ Text.putStrLn $ fmtOverall showSwap overall
-  printAccuracy target
+      printReport $ aggregate target $ map dropId xs
+
+  -- when showSwap, report swap flaws
+  -- unless (showSwap and onlyTotal), show ram flaws
+  (ramFlaw, swapFlaw) <- checkForFlaws target
+  when showSwap $ maybe (pure ()) reportSwapFlaw swapFlaw
+  unless (onlyTotal && showSwap) $ maybe (pure ()) reportRamFlaw ramFlaw
 
 
 readNameAndStats ::
@@ -668,30 +674,91 @@ smapValMb l =
 
 
 -- | Describes the accuracy of main memory calculation
-data RamAccuracy
+data RamFlaw
   = -- | no shared mem is reported
     NoSharedMem
   | -- | some shared mem not reported
     SomeSharedMem
   | -- | accurate only considering each process in isolation
     ExactForIsolatedMem
-  | -- | accurate and can total
-    ExactMem
   deriving (Eq, Show, Ord)
 
 
--- | Describes the accuracy of the swap measurement
-data SwapAccuracy
+fmtRamFlaw :: Bool -> RamFlaw -> Text
+fmtRamFlaw onlyTotal accuracy =
+  let
+    prefix = if onlyTotal then "error: " else "warning: "
+   in
+    case accuracy of
+      NoSharedMem ->
+        Text.unlines
+          [ prefix <> "shared memory is not reported by this system."
+          , "Values reported will be too large, and totals are not reported"
+          ]
+      SomeSharedMem ->
+        Text.unlines
+          [ prefix <> "shared memory is not reported accurately by this system."
+          , "Values reported could be too large, and totals are not reported"
+          ]
+      ExactForIsolatedMem ->
+        Text.unlines
+          [ prefix <> "shared memory is slightly over-estimated by this system"
+          , "for each program, so totals are not reported."
+          ]
+
+
+-- | Describes inaccuracies in the swap measurement
+data SwapFlaw
   = -- | not available
     NoSwap
   | -- | accurate only considering each process in isolation
     ExactForIsolatedSwap
-  | -- | accurate and can total
-    ExactSwap
   deriving (Eq, Show, Ord)
 
 
-type Accuracy = (RamAccuracy, SwapAccuracy)
+fmtSwapFlaw :: Bool -> SwapFlaw -> Text
+fmtSwapFlaw onlyTotal flaw =
+  let
+    prefix = if onlyTotal then "error: " else "warning: "
+   in
+    case flaw of
+      NoSwap -> prefix <> "swap is not reported by this system."
+      ExactForIsolatedSwap ->
+        Text.unlines
+          [ prefix <> "swap is over-estimated by this system"
+          , "for each program, so totals are not reported."
+          ]
+
+
+type Flaws = (Maybe RamFlaw, Maybe SwapFlaw)
+
+
+checkForFlaws :: Target -> IO Flaws
+checkForFlaws target = do
+  let pid = NE.head $ tPids target
+      version = tKernel target
+      hasShared = unknownShared version
+  case version of
+    (2, 4, _) -> do
+      let memInfoPath = pidPath "meminfo" pid
+          alt = (Just SomeSharedMem, Just NoSwap)
+          best = (Just ExactForIsolatedMem, Just NoSwap)
+          containsInact = Text.isInfixOf "Inact_"
+          checkInact x = if containsInact x then best else alt
+      doesFileExist memInfoPath >>= \case
+        False -> pure alt
+        _ -> checkInact <$> readUtf8Text memInfoPath
+    (2, 6, _) -> do
+      let withSmaps = if tHasPss target then best else alt
+          alt = (Just ExactForIsolatedMem, Just ExactForIsolatedSwap)
+          best = (Nothing, Just ExactForIsolatedSwap)
+          withNoSmaps = Just $ if hasShared then SomeSharedMem else NoSharedMem
+      pure $ if tHasSmaps target then withSmaps else (withNoSmaps, Just NoSwap)
+    (major, _, _) | major > 2 && tHasSmaps target -> do
+      let alt = (Nothing, Just ExactForIsolatedSwap)
+          best = (Nothing, Nothing)
+      pure $ if tHasSwapPss target then best else alt
+    _ -> pure (Just ExactForIsolatedMem, Just NoSwap)
 
 
 data SubTotal = SubTotal
@@ -861,40 +928,6 @@ fmtAsHeader showSwap =
     if showSwap
       then ram <> ("" +| swap' |+ "\t") <> label
       else ram <> "\t" <> label
-
-
-printAccuracy :: Target -> IO ()
-printAccuracy target = do
-  (memAcc, swapAcc) <- readAccuracy target
-  print (tKernel target, memAcc, swapAcc)
-
-
-readAccuracy :: Target -> IO Accuracy
-readAccuracy target = do
-  let pid = NE.head $ tPids target
-      version = tKernel target
-      hasShared = unknownShared version
-  case version of
-    (2, 4, _) -> do
-      let memInfoPath = pidPath "meminfo" pid
-          alt = (SomeSharedMem, NoSwap)
-          best = (ExactForIsolatedMem, NoSwap)
-          containsInact = Text.isInfixOf "Inact_"
-          checkInact x = if containsInact x then best else alt
-      doesFileExist memInfoPath >>= \case
-        False -> pure alt
-        _ -> checkInact <$> readUtf8Text memInfoPath
-    (2, 6, _) -> do
-      let withSmaps = if tHasPss target then best else alt
-          alt = (ExactForIsolatedMem, ExactForIsolatedSwap)
-          best = (ExactMem, ExactForIsolatedSwap)
-          withNoSmaps = if hasShared then SomeSharedMem else NoSharedMem
-      pure $ if tHasSmaps target then withSmaps else (withNoSmaps, NoSwap)
-    (major, _, _) | major > 2 && tHasSmaps target -> do
-      let alt = (ExactMem, ExactForIsolatedSwap)
-          best = (ExactMem, ExactSwap)
-      pure $ if tHasSwapPss target then best else alt
-    _ -> pure (ExactForIsolatedMem, NoSwap)
 
 
 cmdWithCount :: AsCmdName a => a -> Int -> Text

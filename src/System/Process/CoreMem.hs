@@ -59,8 +59,8 @@ import System.Directory (
   getSymbolicLinkTarget,
   listDirectory,
  )
-import System.Directory.Internal.Prelude (isDoesNotExistError, isPermissionError)
 import System.FilePath (takeBaseName)
+import System.IO.Error (isDoesNotExistError, isPermissionError)
 import System.Posix.Types (ProcessID)
 import System.Posix.User (getEffectiveUserID)
 import Text.Read (readEither, readMaybe)

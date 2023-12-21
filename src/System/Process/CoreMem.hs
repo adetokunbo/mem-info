@@ -31,7 +31,7 @@ import Data.List.NonEmpty (NonEmpty, nonEmpty)
 import qualified Data.List.NonEmpty as NE
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (isJust, mapMaybe)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -58,6 +58,7 @@ import System.Directory (
   getSymbolicLinkTarget,
   listDirectory,
  )
+import System.Exit (exitFailure)
 import System.FilePath (takeBaseName)
 import System.IO (stderr)
 import System.IO.Error (isDoesNotExistError, isPermissionError)
@@ -70,21 +71,28 @@ printProcs :: (Choices, Target) -> IO ()
 printProcs ct@(cs, target) = do
   let showSwap = choiceShowSwap cs
       onlyTotal = choiceOnlyTotal cs
-      shouldShowTotal = (showSwap && tHasSwapPss target) || tHasPss target
+      overallIsAccurate = (showSwap && tHasSwapPss target) || tHasPss target
       print' (name, stats) = Text.putStrLn $ fmtCmdTotal showSwap name stats
       printTotal = Text.putStrLn . fmtMemBytes
       printReport totals = do
         let overall = overallTotals $ Map.elems totals
-            (private, swap) = overall
         if onlyTotal
           then do
-            when (showSwap && tHasSwapPss target) $ printTotal swap
-            when (not showSwap && tHasPss target) $ printTotal private
-            checkForFlaws target >>= reportFlaws showSwap onlyTotal
+            let (private, swap) = overall
+            flaws@(ram, sw) <- checkForFlaws target
+            if showSwap
+              then do
+                when (tHasSwapPss target) $ printTotal swap
+                reportFlaws showSwap onlyTotal flaws
+                when (isJust sw) exitFailure
+              else do
+                when (tHasPss target) $ printTotal private
+                reportFlaws showSwap onlyTotal flaws
+                when (isJust ram) exitFailure
           else do
             Text.putStrLn $ fmtAsHeader showSwap
             mapM_ print' $ Map.toList totals
-            when shouldShowTotal $ Text.putStrLn $ fmtOverall showSwap overall
+            when overallIsAccurate $ Text.putStrLn $ fmtOverall showSwap overall
             checkForFlaws target >>= reportFlaws showSwap onlyTotal
 
   withCmdTotals printReport ct

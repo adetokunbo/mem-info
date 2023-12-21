@@ -3,6 +3,7 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 {- |
@@ -87,6 +88,14 @@ printProcs ct@(cs, target) = do
             when shouldShowTotal $ Text.putStrLn $ fmtOverall showSwap overall
         reportFlaws showSwap onlyTotal target
 
+  withCmdTotals printReport ct
+
+
+withCmdTotals ::
+  (forall a. (Ord a, AsCmdName a) => Map a CmdTotal -> IO b) ->
+  (Choices, Target) ->
+  IO b
+withCmdTotals printReport ct@(cs, target) = do
   foldlEitherM (readNameAndStats ct) (NE.toList $ tPids target) >>= \case
     Left err -> error $ show err
     Right xs | choiceByPid cs -> do

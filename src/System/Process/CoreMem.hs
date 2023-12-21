@@ -11,8 +11,8 @@ Copyright   : (c) 2023 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
-Provides functions that interpret the command line and memory scan of specified
-processes
+Provides functions that interpret a command line and then compute the memory
+usage of specified processes
 -}
 module System.Process.CoreMem (
   getChoices,
@@ -60,6 +60,7 @@ import System.Directory (
   listDirectory,
  )
 import System.FilePath (takeBaseName)
+import System.IO (stderr)
 import System.IO.Error (isDoesNotExistError, isPermissionError)
 import System.Posix.Types (ProcessID)
 import System.Posix.User (getEffectiveUserID)
@@ -69,23 +70,22 @@ import Text.Read (readEither, readMaybe)
 printProcs :: (Choices, Target) -> IO ()
 printProcs ct@(cs, target) = do
   let showSwap = choiceShowSwap cs
-      print' (name, stats) = Text.putStrLn $ fmtCmdTotal showSwap name stats
-      shouldShowTotal = (showSwap && tHasSwapPss target) || tHasPss target
       onlyTotal = choiceOnlyTotal cs
-      reportSwapFlaw = Text.putStrLn . fmtSwapFlaw onlyTotal
-      reportRamFlaw = Text.putStrLn . fmtRamFlaw onlyTotal
-      reportTotal = Text.putStrLn . fmtMemBytes
+      shouldShowTotal = (showSwap && tHasSwapPss target) || tHasPss target
+      print' (name, stats) = Text.putStrLn $ fmtCmdTotal showSwap name stats
+      printTotal = Text.putStrLn . fmtMemBytes
       printReport totals = do
         let overall = overallTotals $ Map.elems totals
             (private, swap) = overall
         if onlyTotal
           then do
-            when (showSwap && tHasSwapPss target) $ reportTotal swap
-            when (not showSwap && tHasPss target) $ reportTotal private
+            when (showSwap && tHasSwapPss target) $ printTotal swap
+            when (not showSwap && tHasPss target) $ printTotal private
           else do
             Text.putStrLn $ fmtAsHeader showSwap
             mapM_ print' $ Map.toList totals
             when shouldShowTotal $ Text.putStrLn $ fmtOverall showSwap overall
+        reportFlaws showSwap onlyTotal target
 
   foldlEitherM (readNameAndStats ct) (NE.toList $ tPids target) >>= \case
     Left err -> error $ show err
@@ -95,12 +95,6 @@ printProcs ct@(cs, target) = do
     Right xs -> do
       let dropId (_, name, stats) = (name, stats)
       printReport $ aggregate target $ map dropId xs
-
-  -- when showSwap, report swap flaws
-  -- unless (showSwap and onlyTotal), show ram flaws
-  (ramFlaw, swapFlaw) <- checkForFlaws target
-  when showSwap $ maybe (pure ()) reportSwapFlaw swapFlaw
-  unless (onlyTotal && showSwap) $ maybe (pure ()) reportRamFlaw ramFlaw
 
 
 readNameAndStats ::
@@ -115,6 +109,17 @@ readNameAndStats (cs, target) pid = do
       readMemStats target pid >>= \case
         Left e -> pure $ Left e
         Right stats -> pure $ Right (pid, name, stats)
+
+
+reportFlaws :: Bool -> Bool -> Target -> IO ()
+reportFlaws showSwap onlyTotal target = do
+  let reportSwapFlaw = errStrLn onlyTotal . fmtSwapFlaw
+      reportRamFlaw = errStrLn onlyTotal . fmtRamFlaw
+  -- when showSwap, report swap flaws
+  -- unless (showSwap and onlyTotal), show ram flaws
+  (ramFlaw, swapFlaw) <- checkForFlaws target
+  when showSwap $ maybe (pure ()) reportSwapFlaw swapFlaw
+  unless (onlyTotal && showSwap) $ maybe (pure ()) reportRamFlaw ramFlaw
 
 
 -- result of getMemStats(Pid)
@@ -680,7 +685,7 @@ smapValMb l =
    in readVal memWords
 
 
--- | Describes the accuracy of main memory calculation
+-- | Describes inaccuracies in the RAM calculation
 data RamFlaw
   = -- | no shared mem is reported
     NoSharedMem
@@ -691,27 +696,22 @@ data RamFlaw
   deriving (Eq, Show, Ord)
 
 
-fmtRamFlaw :: Bool -> RamFlaw -> Text
-fmtRamFlaw onlyTotal accuracy =
-  let
-    prefix = if onlyTotal then "error: " else "warning: "
-   in
-    case accuracy of
-      NoSharedMem ->
-        Text.unlines
-          [ prefix <> "shared memory is not reported by this system."
-          , "Values reported will be too large, and totals are not reported"
-          ]
-      SomeSharedMem ->
-        Text.unlines
-          [ prefix <> "shared memory is not reported accurately by this system."
-          , "Values reported could be too large, and totals are not reported"
-          ]
-      ExactForIsolatedMem ->
-        Text.unlines
-          [ prefix <> "shared memory is slightly over-estimated by this system"
-          , "for each program, so totals are not reported."
-          ]
+fmtRamFlaw :: RamFlaw -> Text
+fmtRamFlaw NoSharedMem =
+  Text.unlines
+    [ "shared memory is not reported by this system."
+    , "Values reported will be too large, and totals are not reported"
+    ]
+fmtRamFlaw SomeSharedMem =
+  Text.unlines
+    [ "shared memory is not reported accurately by this system."
+    , "Values reported could be too large, and totals are not reported"
+    ]
+fmtRamFlaw ExactForIsolatedMem =
+  Text.unlines
+    [ "shared memory is slightly over-estimated by this system"
+    , "for each program, so totals are not reported."
+    ]
 
 
 -- | Describes inaccuracies in the swap measurement
@@ -723,18 +723,13 @@ data SwapFlaw
   deriving (Eq, Show, Ord)
 
 
-fmtSwapFlaw :: Bool -> SwapFlaw -> Text
-fmtSwapFlaw onlyTotal flaw =
-  let
-    prefix = if onlyTotal then "error: " else "warning: "
-   in
-    case flaw of
-      NoSwap -> prefix <> "swap is not reported by this system."
-      ExactForIsolatedSwap ->
-        Text.unlines
-          [ prefix <> "swap is over-estimated by this system"
-          , "for each program, so totals are not reported."
-          ]
+fmtSwapFlaw :: SwapFlaw -> Text
+fmtSwapFlaw NoSwap = "swap is not reported by this system."
+fmtSwapFlaw ExactForIsolatedSwap =
+  Text.unlines
+    [ "swap is over-estimated by this system"
+    , "for each program, so totals are not reported."
+    ]
 
 
 type Flaws = (Maybe RamFlaw, Maybe SwapFlaw)
@@ -971,3 +966,9 @@ foldlEitherM f xs =
 
 columnWidth :: Int
 columnWidth = 10
+
+
+errStrLn :: Bool -> Text -> IO ()
+errStrLn errOrWarn txt = do
+  let prefix = if errOrWarn then "error: " else "warning: "
+  Text.hPutStrLn stderr $ prefix <> txt

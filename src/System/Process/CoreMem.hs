@@ -82,11 +82,12 @@ printProcs ct@(cs, target) = do
           then do
             when (showSwap && tHasSwapPss target) $ printTotal swap
             when (not showSwap && tHasPss target) $ printTotal private
+            checkForFlaws target >>= reportFlaws showSwap onlyTotal
           else do
             Text.putStrLn $ fmtAsHeader showSwap
             mapM_ print' $ Map.toList totals
             when shouldShowTotal $ Text.putStrLn $ fmtOverall showSwap overall
-        reportFlaws showSwap onlyTotal target
+            checkForFlaws target >>= reportFlaws showSwap onlyTotal
 
   withCmdTotals printReport ct
 
@@ -120,13 +121,12 @@ readNameAndStats (cs, target) pid = do
         Right stats -> pure $ Right (pid, name, stats)
 
 
-reportFlaws :: Bool -> Bool -> Target -> IO ()
-reportFlaws showSwap onlyTotal target = do
+reportFlaws :: Bool -> Bool -> Flaws -> IO ()
+reportFlaws showSwap onlyTotal (ramFlaw, swapFlaw) = do
   let reportSwapFlaw = errStrLn onlyTotal . fmtSwapFlaw
       reportRamFlaw = errStrLn onlyTotal . fmtRamFlaw
   -- when showSwap, report swap flaws
   -- unless (showSwap and onlyTotal), show ram flaws
-  (ramFlaw, swapFlaw) <- checkForFlaws target
   when showSwap $ maybe (pure ()) reportSwapFlaw swapFlaw
   unless (onlyTotal && showSwap) $ maybe (pure ()) reportRamFlaw ramFlaw
 

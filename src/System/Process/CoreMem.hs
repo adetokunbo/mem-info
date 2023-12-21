@@ -18,8 +18,6 @@ usage of specified processes
 module System.Process.CoreMem (
   getChoices,
   printProcs,
-  fmtMem,
-  fmtMemBytes,
 ) where
 
 import Control.Exception (handle, throwIO)

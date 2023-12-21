@@ -76,10 +76,10 @@ printProcs ct@(cs, target) = do
       printTotal = Text.putStrLn . fmtMemBytes
       printReport totals = do
         let overall = overallTotals $ Map.elems totals
+        flaws@(ram, sw) <- checkForFlaws target
         if onlyTotal
           then do
             let (private, swap) = overall
-            flaws@(ram, sw) <- checkForFlaws target
             if showSwap
               then do
                 when (tHasSwapPss target) $ printTotal swap
@@ -93,7 +93,7 @@ printProcs ct@(cs, target) = do
             Text.putStrLn $ fmtAsHeader showSwap
             mapM_ print' $ Map.toList totals
             when overallIsAccurate $ Text.putStrLn $ fmtOverall showSwap overall
-            checkForFlaws target >>= reportFlaws showSwap onlyTotal
+            reportFlaws showSwap onlyTotal flaws
 
   withCmdTotals printReport ct
 

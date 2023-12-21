@@ -12,8 +12,8 @@ Copyright   : (c) 2023 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
-Provides functions that interpret a command line and then compute the memory
-usage of specified processes
+Implements a command that computes the memory usage of processes specified via
+the command's arguments
 -}
 module System.Process.CoreMem (
   getChoices,
@@ -67,6 +67,10 @@ import System.Posix.User (getEffectiveUserID)
 import Text.Read (readEither, readMaybe)
 
 
+{- | Report on the memory usage of the processes given in @Target@
+
+Structure the report output as indicated by @Choices@
+-}
 printProcs :: (Choices, Target) -> IO ()
 printProcs ct@(cs, target) = do
   let showSwap = choiceShowSwap cs
@@ -329,6 +333,7 @@ isRoot :: IO Bool
 isRoot = (== 0) <$> getEffectiveUserID
 
 
+-- | Parse the command arguments and verify that the command can run.
 getChoices :: IO (Choices, Target)
 getChoices = execParser cmdInfo >>= verify
 

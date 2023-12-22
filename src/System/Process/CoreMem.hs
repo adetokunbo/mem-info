@@ -20,6 +20,7 @@ module System.Process.CoreMem (
   printProcs,
 ) where
 
+import Control.Concurrent (threadDelay)
 import Control.Exception (handle, throwIO)
 import Control.Monad (filterM, unless, when)
 import qualified Data.ByteString as BS
@@ -77,44 +78,79 @@ printProcs ct@(cs, target) = do
       onlyTotal = choiceOnlyTotal cs
       overallIsAccurate = (showSwap && tHasSwapPss target) || tHasPss target
       print' (name, stats) = Text.putStrLn $ fmtCmdTotal showSwap name stats
-      printTotal = Text.putStrLn . fmtMemBytes
-      printReport totals = do
+      printRawTotal = Text.putStrLn . fmtMemBytes
+      withPid (pid, name, stats) = ((pid, name), stats)
+      dropId (_, name, stats) = (name, stats)
+      printEachCmd totals = do
         let overall = overallTotals $ Map.elems totals
+        Text.putStrLn $ fmtAsHeader showSwap
+        mapM_ print' $ Map.toList totals
+        when overallIsAccurate $ Text.putStrLn $ fmtOverall showSwap overall
+        checkForFlaws target >>= reportFlaws showSwap onlyTotal
+      printTheTotal totals = do
+        let (private, swap) = overallTotals $ Map.elems totals
         flaws@(ram, sw) <- checkForFlaws target
-        if onlyTotal
+        if showSwap
           then do
-            let (private, swap) = overall
-            if showSwap
-              then do
-                when (tHasSwapPss target) $ printTotal swap
-                reportFlaws showSwap onlyTotal flaws
-                when (isJust sw) exitFailure
-              else do
-                when (tHasPss target) $ printTotal private
-                reportFlaws showSwap onlyTotal flaws
-                when (isJust ram) exitFailure
-          else do
-            Text.putStrLn $ fmtAsHeader showSwap
-            mapM_ print' $ Map.toList totals
-            when overallIsAccurate $ Text.putStrLn $ fmtOverall showSwap overall
+            when (tHasSwapPss target) $ printRawTotal swap
             reportFlaws showSwap onlyTotal flaws
+            when (isJust sw) exitFailure
+          else do
+            when (tHasPss target) $ printRawTotal private
+            reportFlaws showSwap onlyTotal flaws
+            when (isJust ram) exitFailure
+      cmdReport cmds = if onlyTotal then printTheTotal cmds else printEachCmd cmds
 
-  withCmdTotals printReport ct
+  if choiceByPid cs
+    then case choiceWatchSecs cs of
+      Nothing -> withCmdTotals ct cmdReport withPid
+      Just period -> withCmdTotals' period ct cmdReport withPid
+    else case choiceWatchSecs cs of
+      Nothing -> withCmdTotals ct cmdReport dropId
+      Just period -> withCmdTotals' period ct cmdReport dropId
 
 
 withCmdTotals ::
-  (forall a. (Ord a, AsCmdName a) => Map a CmdTotal -> IO b) ->
+  (Ord c, AsCmdName c) =>
   (Choices, Target) ->
+  (Map c CmdTotal -> IO b) ->
+  ((ProcessID, Text, PerProc) -> (c, PerProc)) ->
   IO b
-withCmdTotals printReport ct@(cs, target) = do
+withCmdTotals ct@(_, target) printCmds mkCmd = do
   foldlEitherM (readNameAndStats ct) (NE.toList $ tPids target) >>= \case
     Left err -> error $ show err
-    Right xs | choiceByPid cs -> do
-      let withPid (pid, name, stats) = ((pid, name), stats)
-      printReport $ aggregate target $ map withPid xs
-    Right xs -> do
-      let dropId (_, name, stats) = (name, stats)
-      printReport $ aggregate target $ map dropId xs
+    Right cmds -> printCmds $ aggregate target $ map mkCmd cmds
+
+
+withCmdTotals' ::
+  (Ord c, AsCmdName c) =>
+  Natural ->
+  (Choices, Target) ->
+  (Map c CmdTotal -> IO ()) ->
+  ((ProcessID, Text, PerProc) -> (c, PerProc)) ->
+  IO ()
+withCmdTotals' delaySecs ct@(_, target) printCmds mkCmd = do
+  let ignored pids = "these processes have ended; they will not be reported " +| toInteger <$> pids |+ ""
+      periodMicros = 1000000 * fromInteger (toInteger delaySecs)
+      clearScreen = putStrLn "\o033c"
+      go =
+        foldlEitherM' (readNameAndStats ct) (NE.toList $ tPids target) >>= \case
+          (ys, []) -> do
+            Text.putStrLn $ ignored ys
+            Text.putStrLn "All monitored processes have ended"
+            pure ()
+          ([], xs) -> do
+            clearScreen
+            printCmds $ aggregate target $ map mkCmd xs
+            threadDelay periodMicros
+            go
+          (ys, xs) -> do
+            clearScreen
+            Text.putStrLn $ ignored ys
+            printCmds $ aggregate target $ map mkCmd xs
+            threadDelay periodMicros
+            go
+  go
 
 
 readNameAndStats ::
@@ -982,6 +1018,21 @@ foldlEitherM f xs =
           Left err -> pure $ Left err
           Right y -> pure $ Right (y : acc)
    in foldlM go (Right []) xs
+
+
+foldlEitherM' ::
+  Monad m =>
+  (a -> m (Either b c)) ->
+  [a] ->
+  m ([a], [c])
+foldlEitherM' f xs =
+  let
+    go (as, cs) a =
+      f a >>= \case
+        Left _ -> pure (a : as, cs)
+        Right c -> pure (as, c : cs)
+   in
+    foldlM go (mempty, mempty) xs
 
 
 columnWidth :: Int

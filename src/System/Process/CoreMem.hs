@@ -130,27 +130,26 @@ withCmdTotals' ::
   ((ProcessID, Text, PerProc) -> (c, PerProc)) ->
   IO ()
 withCmdTotals' delaySecs ct@(_, target) printCmds mkCmd = do
-  let ignored pids = "these processes have ended; they will not be reported " +| toInteger <$> pids |+ ""
-      periodMicros = 1000000 * fromInteger (toInteger delaySecs)
+  let periodMicros = 1000000 * fromInteger (toInteger delaySecs)
       clearScreen = putStrLn "\o033c"
       go =
         foldlEitherM' (readNameAndStats ct) (NE.toList $ tPids target) >>= \case
-          (ys, []) -> do
-            Text.putStrLn $ ignored ys
-            Text.putStrLn "All monitored processes have ended"
-            pure ()
-          ([], xs) -> do
+          (pids, []) -> do
+            warnStopped pids
+            Text.putStrLn "all monitored processes have stopped; terminating..."
+          (pids, xs) -> do
             clearScreen
-            printCmds $ aggregate target $ map mkCmd xs
-            threadDelay periodMicros
-            go
-          (ys, xs) -> do
-            clearScreen
-            Text.putStrLn $ ignored ys
+            unless (null pids) $ warnStopped pids
             printCmds $ aggregate target $ map mkCmd xs
             threadDelay periodMicros
             go
   go
+
+
+warnStopped :: [ProcessID] -> IO ()
+warnStopped pids = do
+  let errMsg = "some processes stopped and will no longer appear:pids:" +| toInteger <$> pids |+ ""
+  errStrLn False errMsg
 
 
 readNameAndStats ::

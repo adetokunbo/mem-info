@@ -38,7 +38,6 @@ import Fmt (
   (||+),
  )
 import Options.Applicative
-import Options.Applicative.NonEmpty (some1)
 import System.Directory (
   doesFileExist,
   doesPathExist,
@@ -47,6 +46,7 @@ import System.Directory (
  )
 import System.Exit (exitFailure)
 import System.Posix.User (getEffectiveUserID)
+import System.Process.CoreMem.Choices (Choices (..), cmdInfo)
 import System.Process.CoreMem.Prelude
 
 
@@ -158,23 +158,6 @@ reportFlaws showSwap onlyTotal (ramFlaw, swapFlaw) = do
   unless (onlyTotal && showSwap) $ maybe (pure ()) reportRamFlaw ramFlaw
 
 
--- result of getMemStats(Pid)
--- (Private, Shared, Shared_huge, Swap, mem_id)
-
--- result of parse_options
--- split_parses, pids_to_show, watch,   only_total, discriminate_by_pid, show_swap
---       Bool,    [Natural], Natural,       Bool,                Bool,      Bool
-data Choices = Choices
-  { choiceSplitArgs :: !Bool
-  , choiceOnlyTotal :: !Bool
-  , choiceByPid :: !Bool
-  , choiceShowSwap :: !Bool
-  , choiceWatchSecs :: !(Maybe Natural)
-  , choicePidsToShow :: !(Maybe (NonEmpty ProcessID))
-  }
-  deriving (Eq, Show)
-
-
 -- | Represents why the given pids are being scanned
 data PidType = Requested | ViaRoot
   deriving (Eq, Show)
@@ -223,82 +206,6 @@ confirmPss pid = do
   doesPathExist smapsPath >>= \case
     False -> pure (False, False, False)
     _ -> memtypes <$> readUtf8Text smapsPath
-
-
-cmdInfo :: ParserInfo Choices
-cmdInfo = info (helper <*> parseChoices) mempty
-
-
-parseChoices :: Parser Choices
-parseChoices =
-  Choices
-    <$> parseSplitArgs
-    <*> parseOnlyTotal
-    <*> parseDiscriminateByPid
-    <*> parseShowSwap
-    <*> optional parseWatchPeriodSecs
-    <*> optional parseChoicesPidsToShow
-
-
-parseChoicesPidsToShow :: Parser (NonEmpty ProcessID)
-parseChoicesPidsToShow =
-  some1 $
-    option positiveNum $
-      short 'p'
-        <> long "pids"
-        <> metavar "<pid1> [ -p pid2 ... -p pidN ]"
-        <> help "Only show memory usage of the specified PIDs"
-
-
-parseSplitArgs :: Parser Bool
-parseSplitArgs =
-  switch $
-    short 's'
-      <> long "split-args"
-      <> help "Show and separate by all command line arguments"
-
-
-parseOnlyTotal :: Parser Bool
-parseOnlyTotal =
-  switch $
-    short 't'
-      <> long "total"
-      <> help "Only show the total value"
-
-
-parseDiscriminateByPid :: Parser Bool
-parseDiscriminateByPid =
-  switch $
-    short 'd'
-      <> long "discriminate-by-pid"
-      <> help "Show by process rather than by program"
-
-
-parseShowSwap :: Parser Bool
-parseShowSwap =
-  switch $
-    short 'S'
-      <> long "show_swap"
-      <> help "Show swap information"
-
-
-parseWatchPeriodSecs :: Parser Natural
-parseWatchPeriodSecs =
-  option positiveNum $
-    short 'w'
-      <> long "watch"
-      <> metavar "N"
-      <> help "Measure and show memory every N seconds (N > 0)"
-
-
-positiveNum :: (Read a, Ord a, Num a) => ReadM a
-positiveNum =
-  let
-    checkPositive i
-      | i > 0 = pure i
-      | otherwise = readerError "Value must be greater than 0"
-   in
-    auto >>= checkPositive
 
 
 parseKernelVersion :: Text -> Either String KernelVersion

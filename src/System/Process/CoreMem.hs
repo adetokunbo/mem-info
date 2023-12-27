@@ -20,24 +20,11 @@ module System.Process.CoreMem (
   printProcs,
 ) where
 
-import Control.Concurrent (threadDelay)
-import Control.Exception (handle, throwIO)
-import Control.Monad (filterM, unless, when)
 import qualified Data.ByteString as BS
-import Data.Char (isSpace)
-import Data.Foldable (foldlM)
-import Data.Hashable (hash)
-import Data.List (foldl')
-import Data.List.NonEmpty (NonEmpty, nonEmpty)
 import qualified Data.List.NonEmpty as NE
-import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (isJust, mapMaybe)
-import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Text.IO as Text
 import qualified Data.Text.Read as Text
 import Fmt (
@@ -50,7 +37,6 @@ import Fmt (
   (|++|),
   (||+),
  )
-import Numeric.Natural
 import Options.Applicative
 import Options.Applicative.NonEmpty (some1)
 import System.Directory (
@@ -60,12 +46,8 @@ import System.Directory (
   listDirectory,
  )
 import System.Exit (exitFailure)
-import System.FilePath (takeBaseName)
-import System.IO (stderr)
-import System.IO.Error (isDoesNotExistError, isPermissionError)
-import System.Posix.Types (ProcessID)
 import System.Posix.User (getEffectiveUserID)
-import Text.Read (readEither, readMaybe)
+import System.Process.CoreMem.Prelude
 
 
 {- | Report on the memory usage of the processes given in @Target@

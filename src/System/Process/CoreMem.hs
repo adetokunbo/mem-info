@@ -438,14 +438,6 @@ baseName :: Text -> Text
 baseName = Text.pack . takeBaseName . Text.unpack
 
 
-isNull :: Char -> Bool
-isNull = (== '\0')
-
-
-isNullOrSpace :: Char -> Bool
-isNullOrSpace x = isSpace x || isNull x
-
-
 dropEndNulls :: Text -> Text
 dropEndNulls = Text.dropWhileEnd isNull
 

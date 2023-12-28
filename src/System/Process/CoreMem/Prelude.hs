@@ -7,6 +7,11 @@ SPDX-License-Identifier: BSD3
 Imports and re-export commonly-used functions and data types
 -}
 module System.Process.CoreMem.Prelude (
+  -- * functions
+  isNull,
+  isNullOrSpace,
+
+  -- * module re-exports
   module Control.Concurrent,
   module Control.Exception,
   module Control.Monad,
@@ -47,3 +52,11 @@ import System.IO (stderr)
 import System.IO.Error (isDoesNotExistError, isPermissionError)
 import System.Posix.Types (ProcessID)
 import Text.Read (readEither, readMaybe)
+
+
+isNull :: Char -> Bool
+isNull = (== '\0')
+
+
+isNullOrSpace :: Char -> Bool
+isNullOrSpace x = isSpace x || isNull x

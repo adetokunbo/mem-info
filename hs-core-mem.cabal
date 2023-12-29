@@ -27,8 +27,8 @@ source-repository head
 
 library
   exposed-modules:  System.Process.CoreMem
-                    System.Process.CoreMem.Choices
                     System.Process.CoreMem.Prelude
+                    System.MemInfo.Choices
                     System.MemInfo.SysInfo
   hs-source-dirs:   src
   build-depends:

@@ -1,5 +1,5 @@
 {- |
-Module      : System.Process.CoreMem.Choices
+Module      : System.MemInfo.Choices
 Copyright   : (c) 2022 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
@@ -7,7 +7,7 @@ SPDX-License-Identifier: BSD3
 Defines the command line flags used to control the behaviour of the core-mem
 command
 -}
-module System.Process.CoreMem.Choices (
+module System.MemInfo.Choices (
   -- * data types
   Choices (..),
   cmdInfo,

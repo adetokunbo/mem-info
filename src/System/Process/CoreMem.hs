@@ -44,9 +44,9 @@ import System.Directory (
   listDirectory,
  )
 import System.Exit (exitFailure)
+import System.MemInfo.Choices (Choices (..), cmdInfo)
 import System.MemInfo.SysInfo (KernelVersion, readKernelVersion, unknownShared)
 import System.Posix.User (getEffectiveUserID)
-import System.Process.CoreMem.Choices (Choices (..), cmdInfo)
 import System.Process.CoreMem.Prelude
 
 

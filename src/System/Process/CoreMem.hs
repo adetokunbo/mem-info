@@ -26,7 +26,6 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
-import qualified Data.Text.Read as Text
 import Fmt (
   fixedF,
   padBothF,
@@ -45,6 +44,7 @@ import System.Directory (
   listDirectory,
  )
 import System.Exit (exitFailure)
+import System.MemInfo.SysInfo (KernelVersion, readKernelVersion, unknownShared)
 import System.Posix.User (getEffectiveUserID)
 import System.Process.CoreMem.Choices (Choices (..), cmdInfo)
 import System.Process.CoreMem.Prelude
@@ -206,43 +206,6 @@ confirmPss pid = do
   doesPathExist smapsPath >>= \case
     False -> pure (False, False, False)
     _ -> memtypes <$> readUtf8Text smapsPath
-
-
-parseKernelVersion :: Text -> Either String KernelVersion
-parseKernelVersion =
-  let unrecognized = Left "unrecognized kernel version"
-      dec' (Right (x, extra)) | Text.null extra = Right x
-      dec' _ = unrecognized
-      dec1st' (Right (x, _)) = Right x
-      dec1st' _ = unrecognized
-
-      dec = dec' . Text.decimal
-      dec1st = dec1st' . Text.decimal
-      fromSplit [x] = (,,) <$> dec x <*> pure 0 <*> pure 0
-      fromSplit [x, y] = (,,) <$> dec x <*> dec1st y <*> pure 0
-      fromSplit [x, y, z] = (,,) <$> dec x <*> dec y <*> dec1st z
-      fromSplit _ = unrecognized
-   in fromSplit . Text.split (== '.')
-
-
-type KernelVersion = (Natural, Natural, Natural)
-
-
-{- | on linux kernels before smaps became available, there was no reliable way to
-determine how much of a processes memory was shared
-
-http://lkml.org/lkml/2005/7/6/250
--}
-unknownShared :: KernelVersion -> Bool
-unknownShared k = k >= (2, 6, 1) && k <= (2, 6, 9)
-
-
-readKernelVersion :: IO (Either String KernelVersion)
-readKernelVersion = parseKernelVersion <$> Text.readFile kernelVersionPath
-
-
-kernelVersionPath :: String
-kernelVersionPath = "/proc/sys/kernel/osrelease"
 
 
 procRoot :: String

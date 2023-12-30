@@ -212,7 +212,7 @@ procRoot :: String
 procRoot = "/proc/"
 
 
-pidPath :: String -> ProcessID -> String
+pidPath :: String -> ProcessID -> FilePath
 pidPath base pid = "" +| procRoot |++| toInteger pid |+ "/" +| base |+ ""
 
 
@@ -248,9 +248,9 @@ pidExeExists = fmap (either (const False) (const True)) . exeInfo
 
 nameAsFullCmd :: ProcessID -> IO (Either LostPid Text)
 nameAsFullCmd pid = do
-  readSplitCmdLine pid >>= \case
-    [] -> pure $ Left $ NoCmdLine pid
-    xs -> pure $ Right $ Text.intercalate " " xs
+  readCmdline pid >>= \case
+    Nothing -> pure $ Left $ NoCmdLine pid
+    Just xs -> pure $ Right $ Text.intercalate " " $ NE.toList xs
 
 
 nameFromExeOnly :: ProcessID -> IO (Either LostPid Text)
@@ -265,13 +265,13 @@ nameFromExeOnly pid = do
       exists orig >>= \case
         True -> pure $ Right $ baseName $ "" +| orig |+ " [updated]"
         _ ->
-          readSplitCmdLine pid >>= \case
-            (x : _) -> do
+          readCmdline pid >>= \case
+            Just (x :| _) -> do
               let addSuffix' b = x <> if b then " [updated]" else " [deleted]"
               Right . baseName . addSuffix' <$> exists x
             -- args should not be empty when {pid_root}/exe resolves to a
-            -- path, it's an error it is
-            [] -> pure $ Left $ NoCmdLine pid
+            -- path, it's an error if it is
+            Nothing -> pure $ Left $ NoCmdLine pid
     Left e -> pure $ Left e
 
 
@@ -320,6 +320,7 @@ exeInfo pid = do
   let rawPath = pidPath "exe" pid
       handledErr e = isDoesNotExistError e || isPermissionError e
       onIOE e = if handledErr e then pure (Left $ NoExeFile pid) else throwIO e
+      takeTillNull = Text.takeWhile (not . isNull)
   handle onIOE $ do
     eiTarget <- takeTillNull . Text.pack <$> getSymbolicLinkTarget rawPath
     let eiDeleted = delEnd `Text.isSuffixOf` eiTarget
@@ -369,12 +370,14 @@ fromLines pid statusLines =
     StatusInfo <$> name <*> ppId
 
 
-readCmdLine :: ProcessID -> IO Text
-readCmdLine = readUtf8Text . pidPath "cmdline"
+readCmdline :: ProcessID -> IO (Maybe (NonEmpty Text))
+readCmdline = fmap toArgs . readUtf8Text . pidPath "cmdline"
 
 
-readSplitCmdLine :: ProcessID -> IO [Text]
-readSplitCmdLine = fmap (Text.split isNullOrSpace . Text.strip . dropEndNulls) . readCmdLine
+toArgs :: Text -> Maybe (NonEmpty Text)
+toArgs =
+  let split' = Text.split isNullOrSpace . Text.strip . dropEndNulls
+   in nonEmpty . split'
 
 
 nonExisting :: NonEmpty ProcessID -> IO [ProcessID]
@@ -405,39 +408,17 @@ dropEndNulls :: Text -> Text
 dropEndNulls = Text.dropWhileEnd isNull
 
 
-takeTillNull :: Text -> Text
-takeTillNull = Text.takeWhile (not . isNull)
-
-
 readMemStats :: Target -> ProcessID -> IO (Either LostPid PerProc)
 readMemStats target pid = do
   statmExists <- doesFileExist $ pidPath "statm" pid
   if
-      | tHasSmaps target -> Right . fromSmap <$> readSmapStats target pid
-      | statmExists -> readFromStatm (tKernel target) pid
+      | tHasSmaps target -> Right . fromSmap . parseSmapStats <$> readSmaps pid
+      | statmExists -> do
+          let readStatm' = readUtf8Text $ pidPath "statm" pid
+              orLostPid = maybe (Left $ BadStatm pid) Right
+              parseStatm' = parseStatm $ tKernel target
+          orLostPid . parseStatm' <$> readStatm'
       | otherwise -> pure $ Left $ NoStatm pid
-
-
-readFromStatm :: KernelVersion -> ProcessID -> IO (Either LostPid PerProc)
-readFromStatm version pid = do
-  let noShared = unknownShared version
-      mkStat rss _shared
-        | noShared =
-            ppZero
-              { ppPrivate = rss * pageSizeKiB
-              , ppMemId = fromInteger $ toInteger pid
-              }
-      mkStat rss shared =
-        ppZero
-          { ppShared = shared * pageSizeKiB
-          , ppPrivate = (rss - shared) * pageSizeKiB
-          , ppMemId = fromInteger $ toInteger pid
-          }
-  statm <- readUtf8Text $ pidPath "statm" pid
-  case parseStatm $ Text.words statm of
-    Right (_size : rss : shared : _xs) -> pure $ Right $ mkStat rss shared
-    Right _ -> pure $ Left $ BadStatm pid
-    Left _ -> pure $ Left $ BadStatm pid
 
 
 -- value used as page size when @MemStat@ is calcuated from statm
@@ -445,13 +426,25 @@ pageSizeKiB :: Int
 pageSizeKiB = 4
 
 
-parseStatm :: [Text] -> Either String [Int]
-parseStatm txts =
+parseStatm :: KernelVersion -> Text -> Maybe PerProc
+parseStatm version content =
   let
-    step (Right acc) txt = ((\x -> Right (x : acc)) =<< readEither (Text.unpack txt))
-    step err _ = err
+    noShared = unknownShared version
+    parseWord w (Just acc) = (\x -> Just (x : acc)) =<< readMaybe (Text.unpack w)
+    parseWord _ Nothing = Nothing
+    parseMetrics = foldr parseWord (Just mempty)
+    withMemId = ppZero {ppMemId = hash content}
+    fromRss rss _shared
+      | noShared = withMemId {ppPrivate = rss * pageSizeKiB}
+    fromRss rss shared =
+      withMemId
+        { ppShared = shared * pageSizeKiB
+        , ppPrivate = (rss - shared) * pageSizeKiB
+        }
    in
-    foldl' step (Right []) txts
+    case parseMetrics $ Text.words content of
+      Just (_size : rss : shared : _xs) -> Just $ fromRss rss shared
+      _ -> Nothing
 
 
 -- | Represents the memory totals for an individual process
@@ -523,24 +516,22 @@ ssZero =
     }
 
 
-readSmapStats :: Target -> ProcessID -> IO SmapStats
-readSmapStats _target pid = do
-  smapLines <- readSmaps pid
-  let stats = foldl' incrSmapStats ssZero smapLines
-  pure $ stats {ssMemId = hash smapLines}
+parseSmapStats :: Text -> SmapStats
+parseSmapStats content =
+  let noMemId = foldl' incrSmapStats ssZero $ Text.lines content
+   in noMemId {ssMemId = hash content}
 
 
-readSmaps :: ProcessID -> IO [Text]
+readSmaps :: ProcessID -> IO Text
 readSmaps pid = do
-  let lines' = fmap Text.lines . readUtf8Text
-      smapPath = pidPath "maps" pid
+  let smapPath = pidPath "maps" pid
       rollupPath = pidPath "smaps_rollup" pid
   hasSmaps <- doesFileExist smapPath
   hasRollup <- doesFileExist rollupPath
   if
-      | hasRollup -> lines' rollupPath
-      | hasSmaps -> lines' smapPath
-      | otherwise -> pure []
+      | hasRollup -> readUtf8Text rollupPath
+      | hasSmaps -> readUtf8Text smapPath
+      | otherwise -> pure Text.empty
 
 
 -- Q: is it worth the dependency to replace this with lens from a lens package ?

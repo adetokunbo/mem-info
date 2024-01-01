@@ -62,29 +62,10 @@ printProcs cs = do
   target <- verify cs
   let showSwap = choiceShowSwap cs
       onlyTotal = choiceOnlyTotal cs
-      overallIsAccurate = (showSwap && tHasSwapPss target) || tHasPss target
-      print' (name, stats) = Text.putStrLn $ fmtCmdTotal showSwap name stats
-      printRawTotal = Text.putStrLn . fmtMemBytes
       withPid (pid, name, stats) = ((pid, name), stats)
       dropId (_, name, stats) = (name, stats)
-      printEachCmd totals = do
-        let overall = overallTotals $ Map.elems totals
-        Text.putStrLn $ fmtAsHeader showSwap
-        mapM_ print' $ Map.toList totals
-        when overallIsAccurate $ Text.putStrLn $ fmtOverall showSwap overall
-        checkForFlaws target >>= reportFlaws showSwap onlyTotal
-      printTheTotal totals = do
-        let (private, swap) = overallTotals $ Map.elems totals
-        flaws@(ram, sw) <- checkForFlaws target
-        if showSwap
-          then do
-            when (tHasSwapPss target) $ printRawTotal swap
-            reportFlaws showSwap onlyTotal flaws
-            when (isJust sw) exitFailure
-          else do
-            when (tHasPss target) $ printRawTotal private
-            reportFlaws showSwap onlyTotal flaws
-            when (isJust ram) exitFailure
+      printEachCmd totals = printCmdTotals target showSwap onlyTotal totals
+      printTheTotal = onlyPrintTotal target showSwap onlyTotal
       printer cmds = if onlyTotal then printTheTotal cmds else printEachCmd cmds
       namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
   if choiceByPid cs
@@ -94,6 +75,33 @@ printProcs cs = do
     else case choiceWatchSecs cs of
       Nothing -> withCmdTotals target namer printer dropId
       Just period -> withCmdTotals' period target namer printer dropId
+
+
+printCmdTotals :: AsCmdName a => Target -> Bool -> Bool -> Map a CmdTotal -> IO ()
+printCmdTotals target showSwap onlyTotal totals = do
+  let overall = overallTotals $ Map.elems totals
+      overallIsAccurate = (showSwap && tHasSwapPss target) || tHasPss target
+      print' (name, stats) = Text.putStrLn $ fmtCmdTotal showSwap name stats
+  Text.putStrLn $ fmtAsHeader showSwap
+  mapM_ print' $ Map.toList totals
+  when overallIsAccurate $ Text.putStrLn $ fmtOverall showSwap overall
+  checkForFlaws target >>= reportFlaws showSwap onlyTotal
+
+
+onlyPrintTotal :: Target -> Bool -> Bool -> Map k CmdTotal -> IO ()
+onlyPrintTotal target showSwap onlyTotal totals = do
+  let (private, swap) = overallTotals $ Map.elems totals
+      printRawTotal = Text.putStrLn . fmtMemBytes
+  flaws@(ram, sw) <- checkForFlaws target
+  if showSwap
+    then do
+      when (tHasSwapPss target) $ printRawTotal swap
+      reportFlaws showSwap onlyTotal flaws
+      when (isJust sw) exitFailure
+    else do
+      when (tHasPss target) $ printRawTotal private
+      reportFlaws showSwap onlyTotal flaws
+      when (isJust ram) exitFailure
 
 
 withCmdTotals ::

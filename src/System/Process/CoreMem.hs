@@ -23,7 +23,6 @@ module System.Process.CoreMem (
 import qualified Data.ByteString as BS
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Fmt (
@@ -45,6 +44,13 @@ import System.Directory (
  )
 import System.Exit (exitFailure)
 import System.MemInfo.Choices (Choices (..), cmdInfo)
+import System.MemInfo.Proc (
+  CmdTotal (..),
+  PerProc (..),
+  amass,
+  parseFromSmap,
+  parseFromStatm,
+ )
 import System.MemInfo.SysInfo (KernelVersion, readKernelVersion, unknownShared)
 import System.Posix.User (getEffectiveUserID)
 import System.Process.CoreMem.Prelude
@@ -101,7 +107,7 @@ withCmdTotals ::
 withCmdTotals ct@(_, target) printCmds mkCmd = do
   foldlEitherM (readNameAndStats ct) (NE.toList $ tPids target) >>= \case
     Left err -> error $ show err
-    Right cmds -> printCmds $ aggregate target $ map mkCmd cmds
+    Right cmds -> printCmds $ amass (tHasPss target) $ map mkCmd cmds
 
 
 withCmdTotals' ::
@@ -122,7 +128,7 @@ withCmdTotals' delaySecs ct@(_, target) printCmds mkCmd = do
           (pids, xs) -> do
             clearScreen
             unless (null pids) $ warnStopped pids
-            printCmds $ aggregate target $ map mkCmd xs
+            printCmds $ amass (tHasPss target) $ map mkCmd xs
             threadDelay periodMicros
             go
   go
@@ -412,114 +418,12 @@ readMemStats :: Target -> ProcessID -> IO (Either LostPid PerProc)
 readMemStats target pid = do
   statmExists <- doesFileExist $ pidPath "statm" pid
   if
-      | tHasSmaps target -> Right . fromSmap . parseSmapStats <$> readSmaps pid
+      | tHasSmaps target -> Right . parseFromSmap <$> readSmaps pid
       | statmExists -> do
           let readStatm' = readUtf8Text $ pidPath "statm" pid
               orLostPid = maybe (Left $ BadStatm pid) Right
-              parseStatm' = parseStatm $ tKernel target
-          orLostPid . parseStatm' <$> readStatm'
+          orLostPid . parseFromStatm (tKernel target) <$> readStatm'
       | otherwise -> pure $ Left $ NoStatm pid
-
-
--- value used as page size when @MemStat@ is calcuated from statm
-pageSizeKiB :: Int
-pageSizeKiB = 4
-
-
-parseStatm :: KernelVersion -> Text -> Maybe PerProc
-parseStatm version content =
-  let
-    noShared = unknownShared version
-    parseWord w (Just acc) = (\x -> Just (x : acc)) =<< readMaybe (Text.unpack w)
-    parseWord _ Nothing = Nothing
-    parseMetrics = foldr parseWord (Just mempty)
-    withMemId = ppZero {ppMemId = hash content}
-    fromRss rss _shared
-      | noShared = withMemId {ppPrivate = rss * pageSizeKiB}
-    fromRss rss shared =
-      withMemId
-        { ppShared = shared * pageSizeKiB
-        , ppPrivate = (rss - shared) * pageSizeKiB
-        }
-   in
-    case parseMetrics $ Text.words content of
-      Just (_size : rss : shared : _xs) -> Just $ fromRss rss shared
-      _ -> Nothing
-
-
--- | Represents the memory totals for an individual process
-data PerProc = PerProc
-  { ppPrivate :: !Int
-  , ppShared :: !Int
-  , ppSharedHuge :: !Int
-  , ppSwap :: !Int
-  , ppMemId :: !Int
-  }
-  deriving (Eq, Show)
-
-
-ppZero :: PerProc
-ppZero =
-  PerProc
-    { ppPrivate = 0
-    , ppShared = 0
-    , ppSharedHuge = 0
-    , ppSwap = 0
-    , ppMemId = 0
-    }
-
-
-fromSmap :: SmapStats -> PerProc
-fromSmap ss =
-  let pssTweak = ssPssCount ss `div` 2 -- add ~0.5 per line counter truncation
-      pssShared = ssPss ss + pssTweak - ssPrivate ss
-   in PerProc
-        { ppSwap = if ssHasSwapPss ss then ssSwapPss ss else ssSwap ss
-        , ppShared = if ssHasPss ss then pssShared else ssShared ss
-        , ppSharedHuge = ssSharedHuge ss
-        , ppPrivate = ssPrivate ss + ssPrivateHuge ss
-        , ppMemId = ssMemId ss
-        }
-
-
--- | Represents per-process data from  @PROC_ROOT@/smaps
-data SmapStats = SmapStats
-  { ssPss :: !Int
-  , ssPssCount :: !Int
-  , ssSwap :: !Int
-  , ssSwapPss :: !Int
-  , ssPrivate :: !Int
-  , ssPrivateHuge :: !Int
-  , ssSharedHuge :: !Int
-  , ssShared :: !Int
-  , ssMemId :: !Int
-  , ssHasPss :: !Bool
-  , ssHasSwapPss :: !Bool
-  }
-  deriving (Eq, Show)
-
-
-ssZero :: SmapStats
-ssZero =
-  SmapStats
-    { ssPss = 0
-    , ssPssCount = 0
-    , ssSwap = 0
-    , ssSwapPss = 0
-    , ssPrivate = 0
-    , ssPrivateHuge = 0
-    , ssSharedHuge = 0
-    , ssShared = 0
-    , ssHasSwapPss = False
-    , ssHasPss = False
-    , ssMemId = 0
-    }
-
-
-parseSmapStats :: Text -> SmapStats
-parseSmapStats content =
-  let noMemId = foldl' incrSmapStats ssZero $ Text.lines content
-   in noMemId {ssMemId = hash content}
 
 
 readSmaps :: ProcessID -> IO Text
@@ -532,47 +436,6 @@ readSmaps pid = do
       | hasRollup -> readUtf8Text rollupPath
       | hasSmaps -> readUtf8Text smapPath
       | otherwise -> pure Text.empty
-
-
--- Q: is it worth the dependency to replace this with lens from a lens package ?
-incrPss
-  , incrSwap
-  , incrSwapPss
-  , incrPrivate
-  , incrPrivateHuge
-  , incrShared
-  , incrSharedHuge ::
-    SmapStats -> Maybe Int -> SmapStats
-incrPss ms = maybe ms $ \n -> ms {ssPss = n + ssPss ms}
-incrSwap ms = maybe ms $ \n -> ms {ssSwap = n + ssSwap ms}
-incrSwapPss ms = maybe ms $ \n -> ms {ssSwapPss = n + ssSwapPss ms}
-incrPrivate ms = maybe ms $ \n -> ms {ssPrivate = n + ssPrivate ms}
-incrShared ms = maybe ms $ \n -> ms {ssShared = n + ssShared ms}
-incrPrivateHuge ms = maybe ms $ \n -> ms {ssPrivateHuge = n + ssPrivateHuge ms}
-incrSharedHuge ms = maybe ms $ \n -> ms {ssSharedHuge = n + ssSharedHuge ms}
-
-
-incrSmapStats :: SmapStats -> Text -> SmapStats
-incrSmapStats acc l =
-  if
-      | Text.isPrefixOf "Private_Hugetlb:" l -> incrPrivateHuge acc $ smapValMb l
-      | Text.isPrefixOf "Shared_Hugetlb:" l -> incrSharedHuge acc $ smapValMb l
-      | Text.isPrefixOf "Shared" l -> incrShared acc $ smapValMb l
-      | Text.isPrefixOf "Private" l -> incrPrivate acc $ smapValMb l
-      | Text.isPrefixOf "Pss:" l ->
-          let acc' = acc {ssHasPss = True, ssPssCount = 1 + ssPssCount acc}
-           in incrPss acc' $ smapValMb l
-      | Text.isPrefixOf "Swap:" l -> incrSwap acc $ smapValMb l
-      | Text.isPrefixOf "SwapPss:" l -> incrSwapPss (acc {ssHasSwapPss = True}) $ smapValMb l
-      | otherwise -> acc
-
-
-smapValMb :: Read a => Text -> Maybe a
-smapValMb l =
-  let memWords = Text.words l
-      readVal (_ : x : _) = readMaybe $ Text.unpack x
-      readVal _ = Nothing
-   in readVal memWords
 
 
 -- | Describes inaccuracies in the RAM calculation
@@ -653,67 +516,6 @@ checkForFlaws target = do
     _ -> pure (Just ExactForIsolatedMem, Just NoSwap)
 
 
-data SubTotal = SubTotal
-  { stShared :: !Int
-  , stSharedHuge :: !Int
-  , stPrivate :: !Int
-  , stCount :: !Int
-  , stSwap :: !Int
-  , stMemIds :: !(Set Int)
-  }
-  deriving (Eq, Show)
-
-
--- If a process is invoked with clone using flags CLONE_VM and not CLONE_THREAD
--- it will share the same memory space as it's parent; this needs to accounted
--- for
---
--- This is detected by computing the memId has the hash of lines for the proc
--- read from its smaps file.
-threadsNotProcs :: SubTotal -> Bool
-threadsNotProcs cs = Set.size (stMemIds cs) == 1 && stCount cs > 1
-
-
-aggregateStep ::
-  Ord a =>
-  Target ->
-  Map a SubTotal ->
-  (a, PerProc) ->
-  Map a SubTotal
-aggregateStep target acc (cmd, mem) =
-  let combinePrivate next prev | tHasPss target = next + prev
-      combinePrivate next prev = max next prev
-      nextSt =
-        SubTotal
-          { stShared = ppShared mem
-          , stSharedHuge = ppSharedHuge mem
-          , stCount = 1
-          , stPrivate = ppPrivate mem
-          , stSwap = ppSwap mem
-          , stMemIds = Set.singleton $ ppMemId mem
-          }
-      update' next prev =
-        prev
-          { stShared = stShared next + stShared prev
-          , stSharedHuge = max (stSharedHuge next) (stSharedHuge prev)
-          , stPrivate = combinePrivate (stPrivate next) (stPrivate prev)
-          , stCount = stCount next + stCount prev
-          , stSwap = stSwap next + stSwap prev
-          , stMemIds = Set.union (stMemIds next) (stMemIds prev)
-          }
-   in Map.insertWith update' cmd nextSt acc
-
-
--- | Represents the memory totals for each command
-data CmdTotal = CmdTotal
-  { ctShared :: !Int
-  , ctPrivate :: !Int
-  , ctCount :: !Int
-  , ctSwap :: !Int
-  }
-  deriving (Eq, Show)
-
-
 overallTotals :: [CmdTotal] -> (Int, Int)
 overallTotals cts =
   let step (private, swap) ct = (private + ctPrivate ct, swap + ctSwap ct)
@@ -734,30 +536,6 @@ fmtOverall showSwap (private, swap) =
     out = if showSwap then withSwap else noSwap
    in
     Text.unlines [top, out, bottom]
-
-
-aggregate ::
-  (AsCmdName a, Ord a) =>
-  Target ->
-  [(a, PerProc)] ->
-  Map a CmdTotal
-aggregate target = Map.map (rollup target) . foldl' (aggregateStep target) mempty
-
-
-rollup :: Target -> SubTotal -> CmdTotal
-rollup target st =
-  let areThreads = threadsNotProcs st
-      hasPss = tHasPss target
-      reducedPrivate = stPrivate st `div` stCount st
-      reducedShared = stShared st `div` stCount st
-      newPrivate = if areThreads then reducedPrivate else stPrivate st
-      newShared = if areThreads && hasPss then reducedShared else stShared st
-   in CmdTotal
-        { ctShared = newShared + stSharedHuge st
-        , ctPrivate = newPrivate + newShared + stSharedHuge st
-        , ctSwap = stSwap st
-        , ctCount = stCount st
-        }
 
 
 fmtCmdTotal :: AsCmdName a => Bool -> a -> CmdTotal -> Text

@@ -56,12 +56,10 @@ import System.Posix.User (getEffectiveUserID)
 import System.Process.CoreMem.Prelude
 
 
-{- | Report on the memory usage of the processes given in @Target@
-
-Structure the report output as indicated by @Choices@
--}
-printProcs :: (Choices, Target) -> IO ()
-printProcs ct@(cs, target) = do
+-- | Report on the memory usage of the processes specified by @Choices@
+printProcs :: Choices -> IO ()
+printProcs cs = do
+  target <- verify cs
   let showSwap = choiceShowSwap cs
       onlyTotal = choiceOnlyTotal cs
       overallIsAccurate = (showSwap && tHasSwapPss target) || tHasPss target
@@ -87,48 +85,50 @@ printProcs ct@(cs, target) = do
             when (tHasPss target) $ printRawTotal private
             reportFlaws showSwap onlyTotal flaws
             when (isJust ram) exitFailure
-      cmdReport cmds = if onlyTotal then printTheTotal cmds else printEachCmd cmds
-
+      printer cmds = if onlyTotal then printTheTotal cmds else printEachCmd cmds
+      namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
   if choiceByPid cs
     then case choiceWatchSecs cs of
-      Nothing -> withCmdTotals ct cmdReport withPid
-      Just period -> withCmdTotals' period ct cmdReport withPid
+      Nothing -> withCmdTotals target namer printer withPid
+      Just period -> withCmdTotals' period target namer printer withPid
     else case choiceWatchSecs cs of
-      Nothing -> withCmdTotals ct cmdReport dropId
-      Just period -> withCmdTotals' period ct cmdReport dropId
+      Nothing -> withCmdTotals target namer printer dropId
+      Just period -> withCmdTotals' period target namer printer dropId
 
 
 withCmdTotals ::
   (Ord c, AsCmdName c) =>
-  (Choices, Target) ->
+  Target ->
+  (ProcessID -> IO (Either LostPid Text)) ->
   (Map c CmdTotal -> IO b) ->
   ((ProcessID, Text, PerProc) -> (c, PerProc)) ->
   IO b
-withCmdTotals ct@(_, target) printCmds mkCmd = do
-  foldlEitherM (readNameAndStats ct) (NE.toList $ tPids target) >>= \case
+withCmdTotals target namer printer mkCmd = do
+  foldlEitherM (readNameAndStats namer target) (NE.toList $ tPids target) >>= \case
     Left err -> error $ show err
-    Right cmds -> printCmds $ amass (tHasPss target) $ map mkCmd cmds
+    Right cmds -> printer $ amass (tHasPss target) $ map mkCmd cmds
 
 
 withCmdTotals' ::
   (Ord c, AsCmdName c) =>
   Natural ->
-  (Choices, Target) ->
+  Target ->
+  (ProcessID -> IO (Either LostPid Text)) ->
   (Map c CmdTotal -> IO ()) ->
   ((ProcessID, Text, PerProc) -> (c, PerProc)) ->
   IO ()
-withCmdTotals' delaySecs ct@(_, target) printCmds mkCmd = do
+withCmdTotals' delaySecs target namer printer mkCmd = do
   let periodMicros = 1000000 * fromInteger (toInteger delaySecs)
       clearScreen = putStrLn "\o033c"
       go =
-        foldlEitherM' (readNameAndStats ct) (NE.toList $ tPids target) >>= \case
+        foldlEitherM' (readNameAndStats namer target) (NE.toList $ tPids target) >>= \case
           (pids, []) -> do
             warnStopped pids
             Text.putStrLn "all monitored processes have stopped; terminating..."
           (pids, xs) -> do
             clearScreen
             unless (null pids) $ warnStopped pids
-            printCmds $ amass (tHasPss target) $ map mkCmd xs
+            printer $ amass (tHasPss target) $ map mkCmd xs
             threadDelay periodMicros
             go
   go
@@ -141,11 +141,11 @@ warnStopped pids = do
 
 
 readNameAndStats ::
-  (Choices, Target) ->
+  (ProcessID -> IO (Either LostPid Text)) ->
+  Target ->
   ProcessID ->
   IO (Either LostPid (ProcessID, Text, PerProc))
-readNameAndStats (cs, target) pid = do
-  let namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
+readNameAndStats namer target pid = do
   namer pid >>= \case
     Left e -> pure $ Left e
     Right name ->
@@ -181,19 +181,17 @@ data Target = Target
   deriving (Eq, Show)
 
 
-verify :: Choices -> IO (Choices, Target)
+verify :: Choices -> IO Target
 verify cs = case choicePidsToShow cs of
   Just tPids -> do
     -- halt if any specified pid cannot be accessed
     checkAllExist tPids
-    target <- mkTarget Requested tPids
-    pure (cs, target)
+    mkTarget Requested tPids
   Nothing -> do
     -- if choicePidsToShow is Nothing, must be running as root
     isRoot' <- isRoot
     unless isRoot' $ error "run as root if no pids given using -p"
-    target <- allKnownProcs >>= mkTarget ViaRoot
-    pure (cs, target)
+    allKnownProcs >>= mkTarget ViaRoot
 
 
 mkTarget :: PidType -> NonEmpty ProcessID -> IO Target
@@ -227,8 +225,8 @@ isRoot = (== 0) <$> getEffectiveUserID
 
 
 -- | Parse the command arguments and verify that the command can run.
-getChoices :: IO (Choices, Target)
-getChoices = execParser cmdInfo >>= verify
+getChoices :: IO Choices
+getChoices = execParser cmdInfo
 
 
 {- |  pidExists returns false for any ProcessID that does not exist or cannot

@@ -42,8 +42,10 @@ import System.MemInfo.Choices (Choices (..), cmdInfo)
 import System.MemInfo.Print (AsCmdName (..), fmtAsHeader, fmtCmdTotal, fmtOverall)
 import System.MemInfo.Proc (
   CmdTotal (..),
+  ExeInfo (..),
   PerProc (..),
   amass,
+  parseExeInfo,
   parseFromSmap,
   parseFromStatm,
  )
@@ -302,17 +304,6 @@ parentNameIfMatched candidate pid = do
         _ -> pure $ Right $ siName si
 
 
-data ExeInfo = ExeInfo
-  { eiTarget :: !Text
-  -- ^ the path that the link /proc/<pid>/exe resolves to
-  , eiOriginal :: !Text
-  -- ^ a sanitized form of eiTarget; it removes the (deleted) suffix
-  , eiDeleted :: !Bool
-  -- ^ does eiTarget end with (deleted)?
-  }
-  deriving (Eq, Show)
-
-
 data LostPid
   = NoExeFile ProcessID
   | NoStatusCmd ProcessID
@@ -325,20 +316,11 @@ data LostPid
 
 exeInfo :: ProcessID -> IO (Either LostPid ExeInfo)
 exeInfo pid = do
-  let rawPath = pidPath "exe" pid
+  let exePath = pidPath "exe" pid
       handledErr e = isDoesNotExistError e || isPermissionError e
       onIOE e = if handledErr e then pure (Left $ NoExeFile pid) else throwIO e
-      takeTillNull = Text.takeWhile (not . isNull)
   handle onIOE $ do
-    eiTarget <- takeTillNull . Text.pack <$> getSymbolicLinkTarget rawPath
-    let eiDeleted = delEnd `Text.isSuffixOf` eiTarget
-        withoutDeleted = Text.replace delEnd "" eiTarget
-        eiOriginal = if eiDeleted then withoutDeleted else eiTarget
-    pure $ Right $ ExeInfo {eiDeleted, eiOriginal, eiTarget}
-
-
-delEnd :: Text
-delEnd = " (deleted)"
+    Right . parseExeInfo . Text.pack <$> getSymbolicLinkTarget exePath
 
 
 data StatusInfo = StatusInfo
@@ -358,8 +340,8 @@ readUtf8Text = fmap decodeUtf8 . BS.readFile
 
 statusInfo :: ProcessID -> IO (Either LostPid StatusInfo)
 statusInfo pid = do
-  let rawPath = pidPath "status" pid
-  parseStatusInfo pid <$> readUtf8Text rawPath
+  let exePath = pidPath "status" pid
+  parseStatusInfo pid <$> readUtf8Text exePath
 
 
 parseStatusInfo :: ProcessID -> Text -> Either LostPid StatusInfo

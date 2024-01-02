@@ -1,4 +1,5 @@
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {- |
@@ -14,12 +15,14 @@ grouping the contents of those files.
 module System.MemInfo.Proc (
   -- * data types
   PerProc (..),
+  ExeInfo (..),
   CmdTotal (..),
 
   -- * functions
   amass,
   parseFromSmap,
   parseFromStatm,
+  parseExeInfo,
 ) where
 
 import qualified Data.Map as Map
@@ -27,6 +30,30 @@ import qualified Data.Set as Set
 import qualified Data.Text as Text
 import System.MemInfo.SysInfo (KernelVersion, unknownShared)
 import System.Process.CoreMem.Prelude
+
+
+-- | Parses the target of  /proc/<pid>/exe into a @'ExeInfo'@
+parseExeInfo :: Text -> ExeInfo
+parseExeInfo x =
+  let eiTarget = takeTillNull x
+      eiDeleted = delEnd' `Text.isSuffixOf` eiTarget
+      withoutDeleted = Text.replace delEnd' "" eiTarget
+      eiOriginal = if eiDeleted then withoutDeleted else eiTarget
+      takeTillNull = Text.takeWhile (not . isNull)
+      delEnd' = " (deleted)"
+   in ExeInfo {eiDeleted, eiOriginal, eiTarget}
+
+
+-- | Represents the information about a process obtained from /proc/<pid>/exe
+data ExeInfo = ExeInfo
+  { eiTarget :: !Text
+  -- ^ the path that the link /proc/<pid>/exe resolves to
+  , eiOriginal :: !Text
+  -- ^ a sanitized form of eiTarget; it removes the (deleted) suffix
+  , eiDeleted :: !Bool
+  -- ^ does eiTarget end with (deleted)?
+  }
+  deriving (Eq, Show)
 
 
 -- | Combine @'PerProc'@ metrics grouped by command name

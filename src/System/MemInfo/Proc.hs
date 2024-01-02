@@ -14,15 +14,18 @@ grouping the contents of those files.
 -}
 module System.MemInfo.Proc (
   -- * data types
-  PerProc (..),
-  ExeInfo (..),
   CmdTotal (..),
+  ExeInfo (..),
+  PerProc (..),
+  StatusInfo (..),
+  BadStatus (..),
 
   -- * functions
   amass,
   parseFromSmap,
   parseFromStatm,
   parseExeInfo,
+  parseStatusInfo,
 ) where
 
 import qualified Data.Map as Map
@@ -30,6 +33,39 @@ import qualified Data.Set as Set
 import qualified Data.Text as Text
 import System.MemInfo.SysInfo (KernelVersion, unknownShared)
 import System.Process.CoreMem.Prelude
+
+
+-- | Represents the information about a process obtained from /proc/<pid>/status
+data StatusInfo = StatusInfo
+  { siName :: !Text
+  , siParent :: !ProcessID
+  }
+  deriving (Eq, Show)
+
+
+-- | Specifies why @'parseStatusInfo'@ might fail
+data BadStatus
+  = NoCmd
+  | NoParent
+  deriving (Eq, Show)
+
+
+-- | Parses the content of  /proc/<pid>/status into a @'StatusInfo'@
+parseStatusInfo :: Text -> Either BadStatus StatusInfo
+parseStatusInfo content =
+  let
+    statusLines = Text.lines content
+    parseLine key l = Text.strip <$> Text.stripPrefix (key <> ":") l
+    mkStep prefix acc l = case acc of
+      Nothing -> parseLine prefix l
+      found -> found
+    name = maybe (Left NoCmd) Right name'
+    name' = foldl' (mkStep "Name") Nothing statusLines
+    ppidTxt = foldl' (mkStep "PPid") Nothing statusLines
+    parsePpid = readMaybe . Text.unpack
+    ppId = maybe (Left NoParent) Right (ppidTxt >>= parsePpid)
+   in
+    StatusInfo <$> name <*> ppId
 
 
 -- | Parses the target of  /proc/<pid>/exe into a @'ExeInfo'@

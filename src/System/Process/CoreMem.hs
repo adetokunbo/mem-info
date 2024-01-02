@@ -20,7 +20,9 @@ module System.Process.CoreMem (
   printProcs,
 ) where
 
+import Data.Bifunctor (first)
 import qualified Data.ByteString as BS
+import Data.Functor ((<&>))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as Text
@@ -39,15 +41,23 @@ import System.Directory (
  )
 import System.Exit (exitFailure)
 import System.MemInfo.Choices (Choices (..), cmdInfo)
-import System.MemInfo.Print (AsCmdName (..), fmtAsHeader, fmtCmdTotal, fmtOverall)
+import System.MemInfo.Print (
+  AsCmdName (..),
+  fmtAsHeader,
+  fmtCmdTotal,
+  fmtOverall,
+ )
 import System.MemInfo.Proc (
+  BadStatus (..),
   CmdTotal (..),
   ExeInfo (..),
   PerProc (..),
+  StatusInfo (..),
   amass,
   parseExeInfo,
   parseFromSmap,
   parseFromStatm,
+  parseStatusInfo,
  )
 import System.MemInfo.SysInfo (KernelVersion, readKernelVersion, unknownShared)
 import System.Posix.User (getEffectiveUserID)
@@ -258,9 +268,11 @@ pidExeExists = fmap (either (const False) (const True)) . exeInfo
 
 nameAsFullCmd :: ProcessID -> IO (Either LostPid Text)
 nameAsFullCmd pid = do
-  readCmdline pid >>= \case
-    Nothing -> pure $ Left $ NoCmdLine pid
-    Just xs -> pure $ Right $ Text.intercalate " " $ NE.toList xs
+  let cmdlinePath = pidPath "cmdline" pid
+      err = NoCmdLine pid
+      recombine = Text.intercalate " " . NE.toList
+      orLostPid = maybe (Left err) (Right . recombine)
+  readUtf8Text cmdlinePath >>= (pure . orLostPid) . parseCmdline
 
 
 nameFromExeOnly :: ProcessID -> IO (Either LostPid Text)
@@ -274,8 +286,9 @@ nameFromExeOnly pid = do
     Right ExeInfo {eiOriginal = orig} ->
       exists orig >>= \case
         True -> pure $ Right $ baseName $ "" +| orig |+ " [updated]"
-        _ ->
-          readCmdline pid >>= \case
+        _ -> do
+          let cmdlinePath = pidPath "cmdline" pid
+          readUtf8Text cmdlinePath <&> parseCmdline >>= \case
             Just (x :| _) -> do
               let addSuffix' b = x <> if b then " [updated]" else " [deleted]"
               Right . baseName . addSuffix' <$> exists x
@@ -323,13 +336,6 @@ exeInfo pid = do
     Right . parseExeInfo . Text.pack <$> getSymbolicLinkTarget exePath
 
 
-data StatusInfo = StatusInfo
-  { siName :: !Text
-  , siParent :: !ProcessID
-  }
-  deriving (Eq, Show)
-
-
 exists :: Text -> IO Bool
 exists = doesPathExist . Text.unpack
 
@@ -340,29 +346,10 @@ readUtf8Text = fmap decodeUtf8 . BS.readFile
 
 statusInfo :: ProcessID -> IO (Either LostPid StatusInfo)
 statusInfo pid = do
-  let exePath = pidPath "status" pid
-  parseStatusInfo pid <$> readUtf8Text exePath
-
-
-parseStatusInfo :: ProcessID -> Text -> Either LostPid StatusInfo
-parseStatusInfo pid content =
-  let
-    statusLines = Text.lines content
-    parseLine key l = Text.strip <$> Text.stripPrefix (key <> ":") l
-    mkStep prefix acc l = case acc of
-      Nothing -> parseLine prefix l
-      found -> found
-    name = maybe (Left $ NoStatusCmd pid) Right name'
-    name' = foldl' (mkStep "Name") Nothing statusLines
-    ppidTxt = foldl' (mkStep "PPid") Nothing statusLines
-    parsePpid = readMaybe . Text.unpack
-    ppId = maybe (Left $ NoStatusParent pid) Right (ppidTxt >>= parsePpid)
-   in
-    StatusInfo <$> name <*> ppId
-
-
-readCmdline :: ProcessID -> IO (Maybe (NonEmpty Text))
-readCmdline = fmap parseCmdline . readUtf8Text . pidPath "cmdline"
+  let statusPath = pidPath "status" pid
+      fromBadStatus NoCmd = NoStatusCmd pid
+      fromBadStatus NoParent = NoStatusParent pid
+  first fromBadStatus . parseStatusInfo <$> readUtf8Text statusPath
 
 
 parseCmdline :: Text -> Maybe (NonEmpty Text)

@@ -359,12 +359,13 @@ readUtf8Text = fmap decodeUtf8 . BS.readFile
 statusInfo :: ProcessID -> IO (Either LostPid StatusInfo)
 statusInfo pid = do
   let rawPath = pidPath "status" pid
-  fromLines pid . Text.lines <$> readUtf8Text rawPath
+  parseStatusInfo pid <$> readUtf8Text rawPath
 
 
-fromLines :: ProcessID -> [Text] -> Either LostPid StatusInfo
-fromLines pid statusLines =
+parseStatusInfo :: ProcessID -> Text -> Either LostPid StatusInfo
+parseStatusInfo pid content =
   let
+    statusLines = Text.lines content
     parseLine key l = Text.strip <$> Text.stripPrefix (key <> ":") l
     mkStep prefix acc l = case acc of
       Nothing -> parseLine prefix l
@@ -379,11 +380,11 @@ fromLines pid statusLines =
 
 
 readCmdline :: ProcessID -> IO (Maybe (NonEmpty Text))
-readCmdline = fmap toArgs . readUtf8Text . pidPath "cmdline"
+readCmdline = fmap parseCmdline . readUtf8Text . pidPath "cmdline"
 
 
-toArgs :: Text -> Maybe (NonEmpty Text)
-toArgs =
+parseCmdline :: Text -> Maybe (NonEmpty Text)
+parseCmdline =
   let split' = Text.split isNullOrSpace . Text.strip . dropEndNulls
    in nonEmpty . split'
 

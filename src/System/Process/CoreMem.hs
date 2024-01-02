@@ -246,20 +246,6 @@ pidExeExists :: ProcessID -> IO Bool
 pidExeExists = fmap (either (const False) (const True)) . exeInfo
 
 
---- given exe and cmd args
---- if split_args join cmd args with spaces replace newlines with spaces return
---- does exe end with deleted
---- if exe ends with (deleted) cmdline[0] exists path =  cmdline[0] (updated)
---- if exe_only; return basename(path)
-
---  if cmdline is empty, there is something wrong, ignore the process
---  this should only happen if the exe does not link to anything, so should not
---  be encountered
-
--- if the cmd has more than 1 arg
--- assume that the 1st is the exe name
--- if it ma
-
 nameAsFullCmd :: ProcessID -> IO (Either LostPid Text)
 nameAsFullCmd pid = do
   let cmdlinePath = pidPath "cmdline" pid
@@ -293,14 +279,13 @@ nameFromExeOnly pid = do
 
 
 nameFor :: ProcessID -> IO (Either LostPid Text)
-nameFor pid = do
-  nameFromExeOnly pid >>= \case
-    Left err -> pure $ Left err
-    Right n -> parentNameIfMatched n pid
+nameFor pid =
+  nameFromExeOnly pid
+    >>= either (pure . Left) (parentNameIfMatched pid)
 
 
-parentNameIfMatched :: Text -> ProcessID -> IO (Either LostPid Text)
-parentNameIfMatched candidate pid = do
+parentNameIfMatched :: ProcessID -> Text -> IO (Either LostPid Text)
+parentNameIfMatched pid candidate = do
   let isMatch = flip Text.isPrefixOf candidate . siName
   statusInfo pid >>= \case
     Left err -> pure $ Left err

@@ -11,6 +11,7 @@ module System.MemInfo.Choices (
   -- * data types
   Choices (..),
   cmdInfo,
+  getChoices,
 
   -- * functions
 ) where
@@ -20,6 +21,7 @@ import Options.Applicative (
   ParserInfo,
   ReadM,
   auto,
+  execParser,
   help,
   helper,
   info,
@@ -33,6 +35,11 @@ import Options.Applicative (
  )
 import Options.Applicative.NonEmpty (some1)
 import System.Process.CoreMem.Prelude
+
+
+-- | Parse the command arguments.
+getChoices :: IO Choices
+getChoices = execParser cmdInfo
 
 
 -- | Represents the execution choices extracted from the comamnd line

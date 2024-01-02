@@ -32,7 +32,6 @@ import Fmt (
   (|+),
   (|++|),
  )
-import Options.Applicative
 import System.Directory (
   doesFileExist,
   doesPathExist,
@@ -40,7 +39,7 @@ import System.Directory (
   listDirectory,
  )
 import System.Exit (exitFailure)
-import System.MemInfo.Choices (Choices (..), cmdInfo)
+import System.MemInfo.Choices (Choices (..), getChoices)
 import System.MemInfo.Print (
   AsCmdName (..),
   fmtAsHeader,
@@ -238,11 +237,6 @@ pidPath base pid = "" +| procRoot |++| toInteger pid |+ "/" +| base |+ ""
 
 isRoot :: IO Bool
 isRoot = (== 0) <$> getEffectiveUserID
-
-
--- | Parse the command arguments and verify that the command can run.
-getChoices :: IO Choices
-getChoices = execParser cmdInfo
 
 
 {- |  pidExists returns false for any ProcessID that does not exist or cannot

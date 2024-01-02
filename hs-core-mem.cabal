@@ -29,6 +29,8 @@ library
   exposed-modules:  System.Process.CoreMem
                     System.Process.CoreMem.Prelude
                     System.MemInfo.Choices
+                    System.MemInfo.Proc
+                    System.MemInfo.Print
                     System.MemInfo.SysInfo
   hs-source-dirs:   src
   build-depends:

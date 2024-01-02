@@ -26,14 +26,9 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Fmt (
-  fixedF,
-  padBothF,
-  padLeftF,
   (+|),
-  (+||),
   (|+),
   (|++|),
-  (||+),
  )
 import Options.Applicative
 import System.Directory (
@@ -44,6 +39,7 @@ import System.Directory (
  )
 import System.Exit (exitFailure)
 import System.MemInfo.Choices (Choices (..), cmdInfo)
+import System.MemInfo.Print (AsCmdName (..), fmtAsHeader, fmtCmdTotal, fmtOverall)
 import System.MemInfo.Proc (
   CmdTotal (..),
   PerProc (..),
@@ -528,100 +524,8 @@ overallTotals cts =
    in foldl' step (0, 0) cts
 
 
-fmtOverall :: Bool -> (Int, Int) -> Text
-fmtOverall showSwap (private, swap) =
-  let
-    rimLength = if showSwap then 46 else 36
-    gapLength = 26
-    top = Text.replicate rimLength "-"
-    gap = Text.replicate gapLength " "
-    bottom = Text.replicate rimLength "="
-    padl = padLeftF columnWidth ' ' . fmtMem
-    withSwap = "" +| gap |++| padl private |++| padl swap |+ ""
-    noSwap = "" +| gap |++| padl private |+ ""
-    out = if showSwap then withSwap else noSwap
-   in
-    Text.unlines [top, out, bottom]
-
-
-fmtCmdTotal :: AsCmdName a => Bool -> a -> CmdTotal -> Text
-fmtCmdTotal showSwap name ct =
-  let
-    padl = padLeftF columnWidth ' ' . fmtMem
-    private = padl $ ctPrivate ct - ctShared ct
-    shared = padl $ ctShared ct
-    all' = padl $ ctPrivate ct
-    swap' = padl $ ctSwap ct
-    name' = cmdWithCount name $ ctCount ct
-    ram = "" +| private |+ " + " +| shared |+ " = " +| all' |+ ""
-    label = "" +| name' |+ ""
-   in
-    if showSwap
-      then ram <> ("" +| swap' |+ "\t") <> label
-      else ram <> "\t" <> label
-
-
-data Power = Ki | Mi | Gi | Ti deriving (Eq, Show, Ord, Enum, Bounded)
-
-
-fmtMem :: Int -> Text
-fmtMem = fmtMem' Ki . fromIntegral
-
-
-fmtMem' :: Power -> Float -> Text
-fmtMem' =
-  let doFmt p x = "" +| fixedF 1 x |+ " " +|| p ||+ "B"
-      go p x | p == maxBound = doFmt p x
-      go p x | x > 1000 = fmtMem' (succ p) (x / 1024)
-      go p x = doFmt p x
-   in go
-
-
 fmtMemBytes :: Int -> Text
 fmtMemBytes x = "" +| x * 1024 |+ ""
-
-
-hdrPrivate, hdrShared, hdrRamUsed, hdrSwapUsed, hdrProgram :: Text
-hdrPrivate = "Private"
-hdrShared = "Shared"
-hdrRamUsed = "RAM Used"
-hdrSwapUsed = "Swap Used"
-hdrProgram = "Program"
-
-
-fmtAsHeader :: Bool -> Text
-fmtAsHeader showSwap =
-  let
-    padb = padBothF columnWidth ' '
-    private = padb hdrPrivate
-    shared = padb hdrShared
-    all' = padb hdrRamUsed
-    name' = padb hdrProgram
-    swap' = padb hdrSwapUsed
-    ram = "" +| private |+ " + " +| shared |+ " = " +| all' |+ ""
-    label = "" +| name' |+ ""
-   in
-    if showSwap
-      then ram <> ("" +| swap' |+ "\t") <> label
-      else ram <> "\t" <> label
-
-
-cmdWithCount :: AsCmdName a => a -> Int -> Text
-cmdWithCount cmd count = "" +| asCmdName cmd |+ " (" +| count |+ ")"
-
-
--- | Represents a label that is as the cmd name in the report output
-class AsCmdName a where
-  -- Convert the data to text for output
-  asCmdName :: a -> Text
-
-
-instance AsCmdName Text where
-  asCmdName = id
-
-
-instance AsCmdName (ProcessID, Text) where
-  asCmdName (pid, name) = "" +| name |+ " [" +| toInteger pid |+ "]"
 
 
 foldlEitherM ::
@@ -651,10 +555,6 @@ foldlEitherM' f xs =
         Right c -> pure (as, c : cs)
    in
     foldlM go (mempty, mempty) xs
-
-
-columnWidth :: Int
-columnWidth = 10
 
 
 errStrLn :: Bool -> Text -> IO ()

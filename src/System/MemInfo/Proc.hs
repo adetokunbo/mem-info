@@ -32,7 +32,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as Text
 import System.MemInfo.SysInfo (KernelVersion, unknownShared)
-import System.Process.CoreMem.Prelude
+import System.MemInfo.Prelude
 
 
 -- | Represents the information about a process obtained from /proc/<pid>/status

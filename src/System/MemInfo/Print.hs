@@ -31,7 +31,7 @@ import Fmt (
   (||+),
  )
 import System.MemInfo.Proc (CmdTotal (..))
-import System.Process.CoreMem.Prelude
+import System.MemInfo.Prelude
 
 
 {- | Generates the text of a row displaying the metrics for a single command in

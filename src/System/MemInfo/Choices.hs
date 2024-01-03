@@ -34,7 +34,7 @@ import Options.Applicative (
   switch,
  )
 import Options.Applicative.NonEmpty (some1)
-import System.Process.CoreMem.Prelude
+import System.MemInfo.Prelude
 
 
 -- | Parse the command arguments.

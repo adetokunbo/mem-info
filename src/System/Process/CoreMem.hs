@@ -40,6 +40,7 @@ import System.Directory (
  )
 import System.Exit (exitFailure)
 import System.MemInfo.Choices (Choices (..), getChoices)
+import System.MemInfo.Prelude
 import System.MemInfo.Print (
   AsCmdName (..),
   fmtAsHeader,
@@ -60,7 +61,6 @@ import System.MemInfo.Proc (
  )
 import System.MemInfo.SysInfo (KernelVersion, readKernelVersion, unknownShared)
 import System.Posix.User (getEffectiveUserID)
-import System.Process.CoreMem.Prelude
 
 
 -- | Report on the memory usage of the processes specified by @Choices@

@@ -92,23 +92,22 @@ printCmdTotals target showSwap onlyTotal totals = do
   Text.putStrLn $ fmtAsHeader showSwap
   mapM_ print' $ Map.toList totals
   when overallIsAccurate $ Text.putStrLn $ fmtOverall showSwap overall
-  checkForFlaws target >>= reportFlaws showSwap onlyTotal
+  reportFlaws target showSwap onlyTotal
 
 
 onlyPrintTotal :: Target -> Bool -> Bool -> Map k CmdTotal -> IO ()
 onlyPrintTotal target showSwap onlyTotal totals = do
   let (private, swap) = overallTotals $ Map.elems totals
       printRawTotal = Text.putStrLn . fmtMemBytes
-  flaws@(ram, sw) <- checkForFlaws target
   if showSwap
     then do
       when (tHasSwapPss target) $ printRawTotal swap
-      reportFlaws showSwap onlyTotal flaws
-      when (isJust sw) exitFailure
+      reportFlaws target showSwap onlyTotal
+      when (isJust $ tSwapFlaw target) exitFailure
     else do
       when (tHasPss target) $ printRawTotal private
-      reportFlaws showSwap onlyTotal flaws
-      when (isJust ram) exitFailure
+      reportFlaws target showSwap onlyTotal
+      when (isJust $ tRamFlaw target) exitFailure
 
 
 withCmdTotals ::
@@ -169,14 +168,15 @@ readNameAndStats namer target pid = do
         Right stats -> pure $ Right (pid, name, stats)
 
 
-reportFlaws :: Bool -> Bool -> Flaws -> IO ()
-reportFlaws showSwap onlyTotal (ramFlaw, swapFlaw) = do
-  let reportSwapFlaw = errStrLn onlyTotal . fmtSwapFlaw
-      reportRamFlaw = errStrLn onlyTotal . fmtRamFlaw
+reportFlaws :: Target -> Bool -> Bool -> IO ()
+reportFlaws target showSwap onlyTotal = do
+  let reportSwap = errStrLn onlyTotal . fmtSwapFlaw
+      reportRam = errStrLn onlyTotal . fmtRamFlaw
+      (ram, swap) = (tRamFlaw target, tSwapFlaw target)
   -- when showSwap, report swap flaws
   -- unless (showSwap and onlyTotal), show ram flaws
-  when showSwap $ maybe (pure ()) reportSwapFlaw swapFlaw
-  unless (onlyTotal && showSwap) $ maybe (pure ()) reportRamFlaw ramFlaw
+  when showSwap $ maybe (pure ()) reportSwap swap
+  unless (onlyTotal && showSwap) $ maybe (pure ()) reportRam ram
 
 
 -- | Represents why the given pids are being scanned
@@ -184,7 +184,7 @@ data PidType = Requested | ViaRoot
   deriving (Eq, Show)
 
 
--- | Represents the information needed to perform the memory scan
+-- | Represents the information needed to generate the memory usage report
 data Target = Target
   { tPidType :: !PidType
   , tPids :: !(NonEmpty ProcessID)
@@ -192,6 +192,8 @@ data Target = Target
   , tHasPss :: !Bool
   , tHasSwapPss :: !Bool
   , tHasSmaps :: !Bool
+  , tRamFlaw :: Maybe RamFlaw
+  , tSwapFlaw :: Maybe SwapFlaw
   }
   deriving (Eq, Show)
 
@@ -211,20 +213,25 @@ verify cs = case choicePidsToShow cs of
 
 mkTarget :: PidType -> NonEmpty ProcessID -> IO Target
 mkTarget tPidType tPids = do
+  let firstPid = NE.head tPids
+      smapsPath = pidPath "smaps" firstPid
+      hasPss = Text.isInfixOf "Pss:"
+      hasSwapPss = Text.isInfixOf "SwapPss:"
+      memtypes x = (hasPss x, hasSwapPss x)
   tKernel <- readKernelVersion >>= either error pure
-  (tHasSmaps, tHasPss, tHasSwapPss) <- confirmPss $ NE.head tPids
-  pure Target {tPidType, tPids, tKernel, tHasPss, tHasSwapPss, tHasSmaps}
-
-
-confirmPss :: ProcessID -> IO (Bool, Bool, Bool)
-confirmPss pid = do
-  let smapsPath = pidPath "smaps" pid
-      containsPss = Text.isInfixOf "Pss:"
-      containsSwapPss = Text.isInfixOf "SwapPss:"
-      memtypes x = (True, containsPss x, containsSwapPss x)
-  doesPathExist smapsPath >>= \case
-    False -> pure (False, False, False)
-    _ -> memtypes <$> readUtf8Text smapsPath
+  tHasSmaps <- doesPathExist smapsPath
+  (tHasPss, tHasSwapPss) <- memtypes <$> readUtf8Text smapsPath
+  checkForFlaws $
+    Target
+      { tPidType
+      , tPids
+      , tKernel
+      , tHasPss
+      , tHasSwapPss
+      , tHasSmaps
+      , tRamFlaw = Nothing
+      , tSwapFlaw = Nothing
+      }
 
 
 procRoot :: String
@@ -436,15 +443,17 @@ fmtSwapFlaw ExactForIsolatedSwap =
     ]
 
 
-type Flaws = (Maybe RamFlaw, Maybe SwapFlaw)
-
-
-checkForFlaws :: Target -> IO Flaws
+checkForFlaws :: Target -> IO Target
 checkForFlaws target = do
   let pid = NE.head $ tPids target
       version = tKernel target
       hasShared = unknownShared version
-  case version of
+      Target
+        { tHasPss = hasPss
+        , tHasSmaps = hasSmaps
+        , tHasSwapPss = hasSwapPss
+        } = target
+  (tRamFlaw, tSwapFlaw) <- case version of
     (2, 4, _) -> do
       let memInfoPath = pidPath "meminfo" pid
           alt = (Just SomeSharedMem, Just NoSwap)
@@ -455,16 +464,17 @@ checkForFlaws target = do
         False -> pure alt
         _ -> checkInact <$> readUtf8Text memInfoPath
     (2, 6, _) -> do
-      let withSmaps = if tHasPss target then best else alt
+      let withSmaps = if hasPss then best else alt
           alt = (Just ExactForIsolatedMem, Just ExactForIsolatedSwap)
           best = (Nothing, Just ExactForIsolatedSwap)
           withNoSmaps = Just $ if hasShared then SomeSharedMem else NoSharedMem
-      pure $ if tHasSmaps target then withSmaps else (withNoSmaps, Just NoSwap)
-    (major, _, _) | major > 2 && tHasSmaps target -> do
+      pure $ if hasSmaps then withSmaps else (withNoSmaps, Just NoSwap)
+    (major, _, _) | major > 2 && hasSmaps -> do
       let alt = (Nothing, Just ExactForIsolatedSwap)
           best = (Nothing, Nothing)
-      pure $ if tHasSwapPss target then best else alt
+      pure $ if hasSwapPss then best else alt
     _ -> pure (Just ExactForIsolatedMem, Just NoSwap)
+  pure $ target {tRamFlaw, tSwapFlaw}
 
 
 overallTotals :: [CmdTotal] -> (Int, Int)

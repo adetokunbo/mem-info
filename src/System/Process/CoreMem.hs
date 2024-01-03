@@ -340,7 +340,7 @@ statusInfo pid = do
 
 parseCmdline :: Text -> Maybe (NonEmpty Text)
 parseCmdline =
-  let split' = Text.split isNullOrSpace . Text.strip . dropEndNulls
+  let split' = Text.split isNullOrSpace . Text.strip . Text.dropWhileEnd isNull
    in nonEmpty . split'
 
 
@@ -366,10 +366,6 @@ allKnownProcs =
 
 baseName :: Text -> Text
 baseName = Text.pack . takeBaseName . Text.unpack
-
-
-dropEndNulls :: Text -> Text
-dropEndNulls = Text.dropWhileEnd isNull
 
 
 readMemStats :: Target -> ProcessID -> IO (Either LostPid PerProc)

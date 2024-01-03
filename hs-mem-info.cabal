@@ -1,15 +1,15 @@
 cabal-version:      3.0
 name:               hs-mem-info
 version:            0.1.0.0
-synopsis:           Report the core memory usage of a program
+synopsis:           Print the core memory usage of programs
 description:
-  A utility to accurately report the core memory usage of a program
+  A utility to accurately report the core memory usages of programs
   This is a clone of
   [ps_mem](https://github.com/pixelb/ps_mem/blob/master/README.md) the python
   utility
   The package provides
-  * an executable that mimics *ps_mem*
-  * a library that can to provide similar functionality within haskell programs
+  * an executable command `printmem` that mimics *ps_mem*
+  * a haskell library to allow use of similar functionality within haskell programs
 
 license:            BSD-3-Clause
 license-file:       LICENSE

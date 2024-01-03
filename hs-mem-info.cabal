@@ -62,9 +62,9 @@ test-suite test
     , hspec        >=2.1
     , QuickCheck
 
--- cmdline runs the hs-mem-info command
-executable core-mem
-  main-is:          CmdLine.hs
+-- printmem is the printmem command
+executable printmem
+  main-is:          PrintMem.hs
   hs-source-dirs:   exe
   default-language: Haskell2010
   build-depends:

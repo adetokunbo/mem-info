@@ -1,6 +1,6 @@
-# Revision history for hs-core-mem
+# Revision history for hs-mem-info
 
-`hs-core-mem` uses [PVP Versioning][1].
+`hs-mem-info` uses [PVP Versioning][1].
 
 ## 0.1.0.0 -- 2023-12-13
 

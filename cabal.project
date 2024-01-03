@@ -1,5 +1,5 @@
 packages: .
 
 
-package hs-core-mem
+package hs-mem-info
   flags: +build-the-readme

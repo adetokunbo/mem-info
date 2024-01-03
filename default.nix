@@ -21,7 +21,7 @@ let
 in pkgs.haskell-nix.cabalProject {
   # 'cleanGit' cleans a source directory based on the files known by git
   src = pkgs.haskell-nix.haskellLib.cleanGit {
-    name = "hs-core-mem";
+    name = "hs-mem-info";
     src = ./.;
   };
 

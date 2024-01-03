@@ -54,9 +54,11 @@ import System.Posix.Types (ProcessID)
 import Text.Read (readEither, readMaybe)
 
 
+-- | @True@ for the @null@ char
 isNull :: Char -> Bool
 isNull = (== '\0')
 
 
+-- | @True@ for the @null@ char or any space
 isNullOrSpace :: Char -> Bool
 isNullOrSpace x = isSpace x || isNull x

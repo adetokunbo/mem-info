@@ -12,8 +12,7 @@ Copyright   : (c) 2023 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
-Implements a command that computes the memory usage of processes specified via
-the command's arguments
+Implements a command that computes the memory usage of some processes
 -}
 module System.Process.CoreMem (
   getChoices,

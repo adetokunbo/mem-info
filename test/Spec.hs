@@ -4,7 +4,7 @@
 
 module Main where
 
-import qualified Process.CoreMemSpec as CoreMem
+import qualified MemInfo.ProcSpec as Proc
 import System.IO (
   BufferMode (..),
   hSetBuffering,
@@ -19,4 +19,4 @@ main = do
   hSetBuffering stdout NoBuffering
   hSetBuffering stderr NoBuffering
   hspec $ do
-    CoreMem.spec
+    Proc.spec

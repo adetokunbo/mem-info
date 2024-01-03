@@ -1,21 +1,22 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- |
-Module      : Process.CoreMemSpec
+Module      : MemInfo.ProcSpec
 Copyright   : (c) 2023 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 -}
-module Process.CoreMemSpec (spec) where
+module MemInfo.ProcSpec (spec) where
 
+import System.MemInfo.Proc
 import Test.Hspec
-import System.Process.CoreMem
+
 
 spec :: Spec
-spec = describe "CoreMem" $ do
+spec = describe "Proc" $ do
   context "endsThen" $
     it "should be a simple test" $ do
-      getIt `endsThen` (== (Just "a string"))
+      getIt `shouldReturn` Just "a string"
 
 
 getIt :: IO (Maybe String)

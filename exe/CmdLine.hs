@@ -6,7 +6,7 @@ SPDX-License-Identifier: BSD3
 -}
 module Main (main) where
 
-import System.Process.CoreMem (getChoices, printProcs)
+import System.MemInfo (getChoices, printProcs)
 
 
 main :: IO ()

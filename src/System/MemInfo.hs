@@ -7,14 +7,14 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 {- |
-Module      : System.Process.CoreMem
+Module      : System.MemInfo
 Copyright   : (c) 2023 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
 Implements a command that computes the memory usage of some processes
 -}
-module System.Process.CoreMem (
+module System.MemInfo (
   getChoices,
   printProcs,
 ) where

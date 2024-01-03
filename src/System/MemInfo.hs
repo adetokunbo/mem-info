@@ -178,15 +178,9 @@ reportFlaws target showSwap onlyTotal = do
   unless (onlyTotal && showSwap) $ maybe (pure ()) reportRam ram
 
 
--- | Represents why the given pids are being scanned
-data PidType = Requested | ViaRoot
-  deriving (Eq, Show)
-
-
 -- | Represents the information needed to generate the memory usage report
 data Target = Target
-  { tPidType :: !PidType
-  , tPids :: !(NonEmpty ProcessID)
+  { tPids :: !(NonEmpty ProcessID)
   , tKernel :: !KernelVersion
   , tHasPss :: !Bool
   , tHasSwapPss :: !Bool
@@ -202,16 +196,16 @@ verify cs = case choicePidsToShow cs of
   Just tPids -> do
     -- halt if any specified pid cannot be accessed
     checkAllExist tPids
-    mkTarget Requested tPids
+    mkTarget tPids
   Nothing -> do
     -- if choicePidsToShow is Nothing, must be running as root
     isRoot' <- isRoot
     unless isRoot' $ error "run as root if no pids given using -p"
-    allKnownProcs >>= mkTarget ViaRoot
+    allKnownProcs >>= mkTarget
 
 
-mkTarget :: PidType -> NonEmpty ProcessID -> IO Target
-mkTarget tPidType tPids = do
+mkTarget :: NonEmpty ProcessID -> IO Target
+mkTarget tPids = do
   let firstPid = NE.head tPids
       smapsPath = pidPath "smaps" firstPid
       hasPss = Text.isInfixOf "Pss:"
@@ -222,8 +216,7 @@ mkTarget tPidType tPids = do
   (tHasPss, tHasSwapPss) <- memtypes <$> readUtf8Text smapsPath
   checkForFlaws $
     Target
-      { tPidType
-      , tPids
+      { tPids
       , tKernel
       , tHasPss
       , tHasSwapPss

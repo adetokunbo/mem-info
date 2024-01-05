@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -31,8 +33,11 @@ module System.MemInfo.Proc (
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as Text
-import System.MemInfo.SysInfo (KernelVersion, unknownShared)
+import Data.Validity (Validity (..), check, delve)
+import Data.Validity.Text ()
+import GHC.Generics (Generic)
 import System.MemInfo.Prelude
+import System.MemInfo.SysInfo (KernelVersion, unknownShared)
 
 
 -- | Represents the information about a process obtained from /proc/<pid>/status
@@ -40,7 +45,15 @@ data StatusInfo = StatusInfo
   { siName :: !Text
   , siParent :: !ProcessID
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
+
+
+instance Validity StatusInfo where
+  validate StatusInfo {siName, siParent} =
+    mconcat
+      [ delve "the process name" siName
+      , delve "the process ID" $ toInteger siParent
+      ]
 
 
 -- | Specifies why @'parseStatusInfo'@ might fail
@@ -72,12 +85,15 @@ parseStatusInfo content =
 parseExeInfo :: Text -> ExeInfo
 parseExeInfo x =
   let eiTarget = takeTillNull x
-      eiDeleted = delEnd' `Text.isSuffixOf` eiTarget
-      withoutDeleted = Text.replace delEnd' "" eiTarget
+      eiDeleted = delEnd `Text.isSuffixOf` eiTarget
+      withoutDeleted = Text.replace delEnd "" eiTarget
       eiOriginal = if eiDeleted then withoutDeleted else eiTarget
       takeTillNull = Text.takeWhile (not . isNull)
-      delEnd' = " (deleted)"
    in ExeInfo {eiDeleted, eiOriginal, eiTarget}
+
+
+delEnd :: Text
+delEnd = " (deleted)"
 
 
 -- | Represents the information about a process obtained from /proc/<pid>/exe
@@ -89,7 +105,12 @@ data ExeInfo = ExeInfo
   , eiDeleted :: !Bool
   -- ^ does eiTarget end with (deleted)?
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
+
+
+instance Validity ExeInfo where
+  validate ei | eiDeleted ei = check (eiOriginal ei <> delEnd == eiTarget ei) "target is actually deleted"
+  validate ei = check (eiOriginal ei == eiTarget ei) "target is not deleted"
 
 
 -- | Combine @'PerProc'@ metrics grouped by command name

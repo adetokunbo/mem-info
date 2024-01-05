@@ -50,7 +50,7 @@ import Numeric.Natural (Natural)
 import System.FilePath (takeBaseName)
 import System.IO (stderr)
 import System.IO.Error (isDoesNotExistError, isPermissionError)
-import System.Posix.Types (ProcessID)
+import System.Posix.Types (CPid (..), ProcessID)
 import Text.Read (readEither, readMaybe)
 
 

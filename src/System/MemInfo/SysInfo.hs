@@ -17,6 +17,7 @@ module System.MemInfo.SysInfo (
 
   -- * functions
   unknownShared,
+  parseKernelVersion,
   readKernelVersion,
 ) where
 

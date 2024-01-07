@@ -1,10 +1,9 @@
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
 import qualified MemInfo.ProcSpec as Proc
+import qualified MemInfo.SysInfoSpec as SysInfo
 import System.IO (
   BufferMode (..),
   hSetBuffering,
@@ -20,3 +19,4 @@ main = do
   hSetBuffering stderr NoBuffering
   hspec $ do
     Proc.spec
+    SysInfo.spec

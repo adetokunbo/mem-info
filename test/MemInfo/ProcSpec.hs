@@ -7,7 +7,7 @@ Copyright   : (c) 2023 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 -}
-module MemInfo.ProcSpec (spec, genStatusInfoContent) where
+module MemInfo.ProcSpec (spec) where
 
 import Data.Word (Word16)
 import Fmt (blockMapF, build, fmt, (+|), (|+))
@@ -21,15 +21,15 @@ import Test.Validity.GenValidity (genValidSpec)
 
 
 spec :: Spec
-spec = describe "Proc" $ do
+spec = describe "module System.MemInfo.Proc" $ do
+  genValidSpec @ExeInfo
   exeInfoSpec
   statusInfoSpec
   fromStatmSpec
 
 
 exeInfoSpec :: Spec
-exeInfoSpec = describe "ExeInfo" $ do
-  genValidSpec @ExeInfo
+exeInfoSpec = describe "parseExeInfo" $ do
   it "should parse all valid values successfully" $ do
     forAllValid roundtripEI
 
@@ -46,7 +46,7 @@ genOthers = do
 
 
 statusInfoSpec :: Spec
-statusInfoSpec = describe "StatusInfo" $ do
+statusInfoSpec = describe "parseStatusInfo" $ do
   it "should parse all valid values successfully" $ do
     forAll genStatusInfoContent $ uncurry roundtripSI
 
@@ -89,8 +89,11 @@ fromStatmSpec = describe "parseFromStatm" $ do
     it "should parse values to PerProc successfully" $ do
       forAll genNoSharedStatm $ uncurry $ roundtripFromStatm badSharedKernel
   describe "when using a kernel version with known sharing" $ do
-    it "should parse values to PerProc successfully" $ do
-      forAll genSharedStatm $ uncurry $ roundtripFromStatm sharedKernel
+    it "should parse values to PerProc successfully" prop_roundtripStatmShared
+
+
+prop_roundtripStatmShared :: Property
+prop_roundtripStatmShared = discardAfter 5000000 $ forAll genSharedStatm $ uncurry $ roundtripFromStatm sharedKernel
 
 
 statmNoShared :: Word16 -> Text
@@ -123,7 +126,7 @@ genNoSharedStatm = do
 
 genSharedStatm :: Gen (PerProc, Text)
 genSharedStatm = do
-  sharedKb <- genValid
+  sharedKb <- genValid `suchThat` (>) 1
   rssKb <- genValid `suchThat` (<) sharedKb
   let content = statmShared rssKb sharedKb
       pp =

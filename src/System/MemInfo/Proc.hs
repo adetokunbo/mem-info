@@ -218,22 +218,21 @@ pageSizeKiB = 4
 parseFromStatm :: KernelVersion -> Text -> Maybe PerProc
 parseFromStatm version content =
   let
-    noShared = unknownShared version
     parseWord w (Just acc) = (\x -> Just (x : acc)) =<< readMaybe (Text.unpack w)
     parseWord _ Nothing = Nothing
     parseMetrics = foldr parseWord (Just mempty)
     withMemId = ppZero {ppMemId = hash content}
     fromRss rss _shared
-      | noShared = withMemId {ppPrivate = rss * pageSizeKiB}
+      | unknownShared version = withMemId {ppPrivate = rss * pageSizeKiB}
     fromRss rss shared =
       withMemId
         { ppShared = shared * pageSizeKiB
         , ppPrivate = (rss - shared) * pageSizeKiB
         }
+    fromRss' (_size : rss : shared : _xs) = Just $ fromRss rss shared
+    fromRss' _ = Nothing
    in
-    case parseMetrics $ Text.words content of
-      Just (_size : rss : shared : _xs) -> Just $ fromRss rss shared
-      _ -> Nothing
+    parseMetrics (Text.words content) >>= fromRss'
 
 
 ppZero :: PerProc

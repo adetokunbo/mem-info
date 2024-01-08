@@ -86,22 +86,22 @@ otherStatusFields = ["Uid", "Gid", "FDSize", "Ngid", "Threads", "Cpus_allowed"]
 fromStatmSpec :: Spec
 fromStatmSpec = describe "parseFromStatm" $ do
   describe "when using a kernel version with unknown sharing" $ do
-    it "should parse values to PerProc successfully" $ do
-      forAll genNoSharedStatm $ uncurry $ roundtripFromStatm badSharedKernel
+    it "should parse values to PerProc successfully" prop_roundtripStatmNotShared
   describe "when using a kernel version with known sharing" $ do
     it "should parse values to PerProc successfully" prop_roundtripStatmShared
 
 
 prop_roundtripStatmShared :: Property
-prop_roundtripStatmShared = discardAfter 5000000 $ forAll genSharedStatm $ uncurry $ roundtripFromStatm sharedKernel
+prop_roundtripStatmShared =
+  discardAfter 5000000 $
+    forAll genSharedStatm $
+      \(pp, txt) -> Just pp == parseFromStatm sharedKernel txt
 
 
-statmNoShared :: Word16 -> Text
-statmNoShared rss = "0 " +| toInteger rss |+ " 1 2 3 4"
-
-
-roundtripFromStatm :: (Natural, Natural, Natural) -> PerProc -> Text -> Bool
-roundtripFromStatm version pp txt = Just pp == parseFromStatm version txt
+prop_roundtripStatmNotShared :: Property
+prop_roundtripStatmNotShared =
+  forAll genNoSharedStatm $
+    \(pp, txt) -> Just pp == parseFromStatm badSharedKernel txt
 
 
 badSharedKernel :: (Natural, Natural, Natural)
@@ -110,6 +110,10 @@ badSharedKernel = (2, 6, 1)
 
 sharedKernel :: (Natural, Natural, Natural)
 sharedKernel = (2, 7, 1)
+
+
+statmNoShared :: Word16 -> Text
+statmNoShared rss = "0 " +| toInteger rss |+ " 1 2 3 4"
 
 
 genNoSharedStatm :: Gen (PerProc, Text)
@@ -124,6 +128,10 @@ genNoSharedStatm = do
   pure (pp, content)
 
 
+statmShared :: Word16 -> Word16 -> Text
+statmShared rss shared = "0 " +| toInteger rss |+ " " +| toInteger shared |+ " 1 2 3"
+
+
 genSharedStatm :: Gen (PerProc, Text)
 genSharedStatm = do
   sharedKb <- genValid `suchThat` (>) 1
@@ -136,10 +144,6 @@ genSharedStatm = do
           , ppShared = fromIntegral sharedKb * pageSizeKiB
           }
   pure (pp, content)
-
-
-statmShared :: Word16 -> Word16 -> Text
-statmShared rss shared = "0 " +| toInteger rss |+ " " +| toInteger shared |+ " 1 2 3"
 
 
 pageSizeKiB :: Int

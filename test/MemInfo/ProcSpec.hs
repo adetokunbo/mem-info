@@ -33,11 +33,7 @@ spec = describe "module System.MemInfo.Proc" $ do
 exeInfoSpec :: Spec
 exeInfoSpec = describe "parseExeInfo" $ do
   it "should parse all valid values successfully" $ do
-    forAllValid roundtripEI
-
-
-roundtripEI :: ExeInfo -> Bool
-roundtripEI ei = ei == parseExeInfo (eiTarget ei)
+    forAllValid $ \ei -> ei == parseExeInfo (eiTarget ei)
 
 
 genOthers :: Gen [(Text, Word16)]
@@ -50,15 +46,7 @@ genOthers = do
 statusInfoSpec :: Spec
 statusInfoSpec = describe "parseStatusInfo" $ do
   it "should parse all valid values successfully" $ do
-    forAll genStatusInfoContent $ uncurry roundtripSI
-
-
-roundtripSI :: StatusInfo -> Text -> Bool
-roundtripSI si txt = Right si == parseStatusInfo txt
-
-
-genStatusInfo :: Gen StatusInfo
-genStatusInfo = genValid
+    forAll genStatusInfoContent $ \(si, txt) -> Right si == parseStatusInfo txt
 
 
 genProcStatus :: StatusInfo -> Gen [(Text, Text)]
@@ -69,7 +57,7 @@ genProcStatus status = do
 
 genStatusInfoContent :: Gen (StatusInfo, Text)
 genStatusInfoContent = do
-  si <- genStatusInfo
+  si <- genValid
   txt <- fmt . blockMapF <$> genProcStatus si
   pure (si, txt)
 

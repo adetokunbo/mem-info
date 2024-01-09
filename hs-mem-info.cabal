@@ -69,6 +69,7 @@ test-suite test
     , genvalidity-text
     , genvalidity-hspec
     , QuickCheck
+    , text
 
 -- printmem is the printmem command
 executable printmem

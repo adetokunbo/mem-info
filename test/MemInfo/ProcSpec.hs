@@ -9,6 +9,7 @@ SPDX-License-Identifier: BSD3
 -}
 module MemInfo.ProcSpec (spec) where
 
+import qualified Data.Text as Text
 import Data.Word (Word16)
 import Fmt (blockMapF, build, fmt, (+|), (|+))
 import MemInfo.OrphanInstances ()
@@ -26,6 +27,7 @@ spec = describe "module System.MemInfo.Proc" $ do
   exeInfoSpec
   statusInfoSpec
   fromStatmSpec
+  fromSmapSpec
 
 
 exeInfoSpec :: Spec
@@ -91,6 +93,11 @@ fromStatmSpec = describe "parseFromStatm" $ do
     it "should parse values to PerProc successfully" prop_roundtripStatmShared
 
 
+fromSmapSpec :: Spec
+fromSmapSpec = describe "parseFromSmap" $ do
+  it "should parse values to PerProc successfully" prop_roundtripSmap
+
+
 prop_roundtripStatmShared :: Property
 prop_roundtripStatmShared =
   discardAfter 5000000 $
@@ -102,6 +109,10 @@ prop_roundtripStatmNotShared :: Property
 prop_roundtripStatmNotShared =
   forAll genNoSharedStatm $
     \(pp, txt) -> Just pp == parseFromStatm badSharedKernel txt
+
+
+prop_roundtripSmap :: Property
+prop_roundtripSmap = forAll genSmap $ \(pp, txt) -> pp == parseFromSmap txt
 
 
 badSharedKernel :: (Natural, Natural, Natural)
@@ -159,3 +170,67 @@ ppZero =
     , ppSwap = 0
     , ppMemId = 0
     }
+
+
+genSmapLine :: Text -> Gen (Int, Text)
+genSmapLine prefix = do
+  x <- genValid :: Gen Word16
+  let txt = "" +| prefix |+ ": " +| x |+ " kB"
+  pure (fromIntegral x, txt)
+
+
+genSmap :: Gen (PerProc, Text)
+genSmap = oneof [genBaseSmap, genWithSwapPss, genWithPss]
+
+
+genWithSwapPss :: Gen (PerProc, Text)
+genWithSwapPss = do
+  (pp, without) <- genBaseSmap
+  (swapPss, txt) <- genSmapLine "SwapPss"
+  let content = without <> "\n" <> txt
+  pure (pp {ppSwap = swapPss, ppMemId = hash content}, content)
+
+
+genWithPss :: Gen (PerProc, Text)
+genWithPss = do
+  (pp, without, ppPrivateHuge) <- genBaseSmap'
+  (pss, txt) <- genSmapLine "Pss"
+  let content = without <> "\n" <> txt
+      newShared = pss - (ppPrivate pp - ppPrivateHuge)
+  pure (pp {ppShared = newShared, ppMemId = hash content}, content)
+
+
+genBaseSmap :: Gen (PerProc, Text)
+genBaseSmap = do
+  (pp, txt, _) <- genBaseSmap'
+  pure (pp, txt)
+
+
+genBaseSmap' :: Gen (PerProc, Text, Int)
+genBaseSmap' = do
+  (clean, cleanTxt) <- genSmapLine "Private_Clean"
+  (dirty, dirtyTxt) <- genSmapLine "Private_Dirty"
+  (sharedClean, shCleanTxt) <- genSmapLine "Shared_Clean"
+  (sharedDirty, shDirtyTxt) <- genSmapLine "Shared_Dirty"
+  (privateHuge, phTxt) <- genSmapLine "Private_Hugetlb"
+  (sharedHuge, shTxt) <- genSmapLine "Shared_Hugetlb"
+  (swap, swapTxt) <- genSmapLine "Swap"
+  let pp =
+        ppZero
+          { ppPrivate = clean + dirty + privateHuge
+          , ppMemId = hash content
+          , ppSwap = swap
+          , ppSharedHuge = sharedHuge
+          , ppShared = sharedClean + sharedDirty
+          }
+      content =
+        Text.unlines
+          [ phTxt
+          , dirtyTxt
+          , cleanTxt
+          , swapTxt
+          , shTxt
+          , shCleanTxt
+          , shDirtyTxt
+          ]
+  pure (pp, content, privateHuge)

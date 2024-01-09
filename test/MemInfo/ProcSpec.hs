@@ -133,8 +133,8 @@ statmShared rss shared = "0 " +| toInteger rss |+ " " +| toInteger shared |+ " 1
 
 genSharedStatm :: Gen (PerProc, Text)
 genSharedStatm = do
-  sharedKb <- genValid `suchThat` (>) 1
-  rssKb <- genValid `suchThat` (<) sharedKb
+  sharedKb <- genValid `suchThat` (> 1)
+  rssKb <- genValid `suchThat` (> sharedKb)
   let content = statmShared rssKb sharedKb
       pp =
         ppZero

@@ -1,6 +1,6 @@
 # hs-mem-info
 
-[![GitHub CI](https://github.com/adetokunbo/hs-mem-info/actions/workflows/ci.yml/badge.svg)](https://github.com/adetokunbo/hs-mem-info/actions)
+[![GitHub CI](https://github.com/adetokunbo/hs-mem-info/actions/workflows/nix-ci.yml/badge.svg)](https://github.com/adetokunbo/hs-mem-info/actions)
 [![Stackage Nightly](http://stackage.org/package/hs-mem-info/badge/nightly)](http://stackage.org/nightly/package/hs-mem-info)
 [![Hackage][hackage-badge]][hackage]
 [![Hackage Dependencies][hackage-deps-badge]][hackage-deps]

@@ -11,7 +11,7 @@ A utility to accurately report the core memory usage of a program
 This a clone of [ps_mem], a command implemented in python, with its behavior
 available as a library that may be used from haskell programs.
 
-It provides an executable command `printmem`, that mimics the `ps_mem`.
+It provides an executable command `printmem`, that mimics `ps_mem`.
 
 ## printmem usage
 
@@ -33,11 +33,12 @@ Available options:
 
 ### Example output
 
-The [-p PID,...] option allows filtering the results.
-For example to restrict output to the current $USER you could:
+The [-p <pid1> -p pid2 ... -p pidN ] option allows filtering the results.
+
+E.g., to restrict output to the current $USER you could obtain the user process IDs using pgrep comme ca:
 
 ```
-sudo ps_mem -S -p $(pgrep -d' -p ' -u $USER)
+sudo printmem -S -p $(pgrep -d' -p ' -u $USER)
 ```
 
 giving output like this:
@@ -56,6 +57,10 @@ giving output like this:
 
 ```
 
+Note that you can run `printmem` *without* filtering; this will try to display
+data for all running processes so sudo is required
+
+```sudo printmem```
 
 [hackage-deps-badge]: <https://img.shields.io/hackage-deps/v/hs-mem-info.svg>
 [hackage-deps]:       <http://packdeps.haskellers.com/feed?needle=hs-mem-info>

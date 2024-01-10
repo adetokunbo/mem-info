@@ -34,11 +34,11 @@ fmtAsHeaderSpec = describe "fmtAsHeader" $ do
 
 
 headerNoSwap :: Text
-headerNoSwap = "  Private  +   Shared   =  RAM Used \t  Program "
+headerNoSwap = "  Private  +   Shared   =   RAM Used\tProgram   "
 
 
 headerSwap :: Text
-headerSwap = "  Private  +   Shared   =  RAM Used  Swap Used\t  Program "
+headerSwap = "  Private  +   Shared   =   RAM Used Swap Used\tProgram   "
 
 
 fmtOverallSpec :: Spec

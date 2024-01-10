@@ -24,14 +24,15 @@ import Fmt (
   fixedF,
   padBothF,
   padLeftF,
+  padRightF,
   (+|),
   (+||),
   (|+),
   (|++|),
   (||+),
  )
-import System.MemInfo.Proc (CmdTotal (..))
 import System.MemInfo.Prelude
+import System.MemInfo.Proc (CmdTotal (..))
 
 
 {- | Generates the text of a row displaying the metrics for a single command in
@@ -104,11 +105,13 @@ fmtAsHeader :: Bool -> Text
 fmtAsHeader showSwap =
   let
     padb = padBothF columnWidth ' '
+    padr = padRightF columnWidth ' '
+    padl = padLeftF columnWidth ' '
     private = padb hdrPrivate
     shared = padb hdrShared
-    all' = padb hdrRamUsed
-    name' = padb hdrProgram
-    swap' = padb hdrSwapUsed
+    all' = padl hdrRamUsed
+    name' = padr hdrProgram
+    swap' = padl hdrSwapUsed
     ram = "" +| private |+ " + " +| shared |+ " = " +| all' |+ ""
     label = "" +| name' |+ ""
    in

@@ -2,6 +2,7 @@
 
 module Main where
 
+import qualified MemInfo.PrintSpec as Print
 import qualified MemInfo.ProcSpec as Proc
 import qualified MemInfo.SysInfoSpec as SysInfo
 import System.IO (
@@ -19,4 +20,5 @@ main = do
   hSetBuffering stderr NoBuffering
   hspec $ do
     Proc.spec
+    Print.spec
     SysInfo.spec

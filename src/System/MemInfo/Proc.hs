@@ -50,10 +50,12 @@ data StatusInfo = StatusInfo
 
 instance Validity StatusInfo where
   validate StatusInfo {siName, siParent} =
-    mconcat
-      [ delve "the process name" siName
-      , delve "the process ID" $ toInteger siParent
-      ]
+    let name' = Text.strip siName
+        nameOk = Text.length name' > 0 && siName == name'
+     in mconcat
+          [ check nameOk "the process name"
+          , delve "the process ID" $ toInteger siParent
+          ]
 
 
 -- | Specifies why @'parseStatusInfo'@ might fail

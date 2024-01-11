@@ -37,7 +37,7 @@ import Data.Validity (Validity (..), check, delve)
 import Data.Validity.Text ()
 import GHC.Generics (Generic)
 import System.MemInfo.Prelude
-import System.MemInfo.SysInfo (KernelVersion, unknownShared)
+import System.MemInfo.SysInfo (KernelVersion, fickleSharing)
 
 
 -- | Represents the information about a process obtained from /proc/<pid>/status
@@ -225,7 +225,7 @@ parseFromStatm version content =
     parseMetrics = foldr parseWord (Just mempty)
     withMemId = ppZero {ppMemId = hash content}
     fromRss rss _shared
-      | unknownShared version = withMemId {ppPrivate = rss * pageSizeKiB}
+      | fickleSharing version = withMemId {ppPrivate = rss * pageSizeKiB}
     fromRss rss shared =
       withMemId
         { ppShared = shared * pageSizeKiB

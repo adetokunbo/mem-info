@@ -59,7 +59,7 @@ import System.MemInfo.Proc (
   parseFromStatm,
   parseStatusInfo,
  )
-import System.MemInfo.SysInfo (KernelVersion, readKernelVersion, unknownShared)
+import System.MemInfo.SysInfo (KernelVersion, fickleSharing, readKernelVersion)
 import System.Posix.User (getEffectiveUserID)
 
 
@@ -178,7 +178,7 @@ reportFlaws target showSwap onlyTotal = do
   unless (onlyTotal && showSwap) $ maybe (pure ()) reportRam ram
 
 
--- | Represents the information needed to generate the memory usage report
+-- | Represents the information needed to generate a memory usage report
 data Target = Target
   { tPids :: !(NonEmpty ProcessID)
   , tKernel :: !KernelVersion
@@ -200,7 +200,7 @@ verify cs = case choicePidsToShow cs of
   Nothing -> do
     -- if choicePidsToShow is Nothing, must be running as root
     isRoot' <- isRoot
-    unless isRoot' $ haltErr "run as root if no pids given using -p"
+    unless isRoot' $ haltErr "run as root if no pids are specified using -p"
     allKnownProcs >>= mkTarget
 
 
@@ -359,13 +359,13 @@ checkAllExist :: NonEmpty ProcessID -> IO ()
 checkAllExist pids =
   nonExisting pids >>= \case
     [] -> pure ()
-    xs -> haltErr $ "halted: missing processes for pids " +| listF (toInteger <$> xs) |+ ""
+    xs -> haltErr $ "can find process records for pids " +| listF (toInteger <$> xs) |+ ""
 
 
 allKnownProcs :: IO (NonEmpty ProcessID)
 allKnownProcs =
   let readNaturals = fmap (mapMaybe readMaybe)
-      orNoPids = flip maybe pure $ haltErr "did not find any process IDs"
+      orNoPids = flip maybe pure $ haltErr "could not find any process records"
    in readNaturals (listDirectory procRoot)
         >>= filterM pidExeExists
         >>= orNoPids . nonEmpty
@@ -450,7 +450,7 @@ checkForFlaws :: Target -> IO Target
 checkForFlaws target = do
   let pid = NE.head $ tPids target
       version = tKernel target
-      hasShared = unknownShared version
+      hasShared = fickleSharing version
       Target
         { tHasPss = hasPss
         , tHasSmaps = hasSmaps

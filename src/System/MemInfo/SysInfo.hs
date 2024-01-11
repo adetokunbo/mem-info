@@ -6,7 +6,7 @@ Copyright   : (c) 2022 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
-This module provides information about the system on where the memory is
+This module provides information about the system on which the memory is being
 measured.
 
 @'readKernelVersion'@ determines the system's linux @'KernelVersion'@
@@ -16,7 +16,7 @@ module System.MemInfo.SysInfo (
   KernelVersion,
 
   -- * functions
-  unknownShared,
+  fickleSharing,
   parseKernelVersion,
   readKernelVersion,
 ) where
@@ -37,8 +37,8 @@ determine how much of a processes memory was shared
 
 http://lkml.org/lkml/2005/7/6/250
 -}
-unknownShared :: KernelVersion -> Bool
-unknownShared k = k >= (2, 6, 1) && k <= (2, 6, 9)
+fickleSharing :: KernelVersion -> Bool
+fickleSharing k = k >= (2, 6, 1) && k <= (2, 6, 9)
 
 
 -- | Determines the version of the Linux kernel on the current system.

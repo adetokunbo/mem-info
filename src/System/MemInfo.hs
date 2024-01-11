@@ -117,7 +117,7 @@ withCmdTotals ::
   ((ProcessID, Text, PerProc) -> (c, PerProc)) ->
   IO b
 withCmdTotals target namer printer mkCmd = do
-  foldlEitherM (readNameAndStats namer target) (NE.toList $ tPids target) >>= \case
+  foldlEitherM (readNameAndStats namer target) (tPids target) >>= \case
     Left err -> error $ show err
     Right cmds -> printer $ amass (tHasPss target) $ map mkCmd cmds
 
@@ -133,15 +133,16 @@ withCmdTotals' ::
 withCmdTotals' delaySecs target namer printer mkCmd = do
   let periodMicros = 1000000 * fromInteger (toInteger delaySecs)
       clearScreen = putStrLn "\o033c"
+      Target {tPids = pids, tHasPss = hasPss} = target
       go =
-        foldlEitherM' (readNameAndStats namer target) (NE.toList $ tPids target) >>= \case
-          (pids, []) -> do
-            warnStopped pids
+        foldlEitherM' (readNameAndStats namer target) pids >>= \case
+          (stopped, []) -> do
+            warnStopped stopped
             Text.putStrLn "all monitored processes have stopped; terminating..."
-          (pids, xs) -> do
+          (stopped, xs) -> do
             clearScreen
-            unless (null pids) $ warnStopped pids
-            printer $ amass (tHasPss target) $ map mkCmd xs
+            unless (null stopped) $ warnStopped stopped
+            printer $ amass hasPss $ map mkCmd xs
             threadDelay periodMicros
             go
   go
@@ -476,9 +477,9 @@ fmtMemBytes x = "" +| x * 1024 |+ ""
 
 
 foldlEitherM ::
-  Monad m =>
+  (Foldable t, Monad m) =>
   (a -> m (Either b c)) ->
-  [a] ->
+  t a ->
   m (Either b [c])
 foldlEitherM f xs =
   let go (Left err) _ = pure $ Left err
@@ -490,9 +491,9 @@ foldlEitherM f xs =
 
 
 foldlEitherM' ::
-  Monad m =>
+  (Foldable t, Monad m) =>
   (a -> m (Either b c)) ->
-  [a] ->
+  t a ->
   m ([a], [c])
 foldlEitherM' f xs =
   let

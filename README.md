@@ -64,11 +64,11 @@ all running processes, so sudo is required
 ```sudo printmem```
 
 Usually, you'll want to filter the results. which is supported by the `-p <pid>`
-option.  This can be specified multiple times to select multiple processes. `pgrep` is great companion tool for obtaining the specific sets of pids for filtering.
+option.  This can be specified multiple times to select multiple processes. [pgrep] is great companion tool for obtaining the specific sets of pids for filtering.
 
 #### Example: breakdown the memory use of the current user
 
-To restrict output to the current $USER you could obtain the user process IDs using pgrep comme ca:
+To restrict output to the current $USER, you can obtain the user's process IDs using pgrep comme ca
 
 ```
 sudo printmem -S -p $(pgrep -d' -p ' -u $USER)
@@ -114,3 +114,4 @@ giving output like this:
 [hackage-badge]:      <https://img.shields.io/hackage/v/hs-mem-info.svg>
 [hackage]:            <https://hackage.haskell.org/package/hs-mem-info>
 [ps_mem]:             <https://github.com/pixelb/ps_mem/blob/master/README.md>
+[pgrep]:              <https://www.man7.org/linux/man-pages/man1/pgrep.1.html>

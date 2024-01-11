@@ -42,7 +42,7 @@ unknownShared k = k >= (2, 6, 1) && k <= (2, 6, 9)
 
 
 -- | Determines the version of the Linux kernel on the current system.
-readKernelVersion :: IO (Either String KernelVersion)
+readKernelVersion :: IO (Either Text KernelVersion)
 readKernelVersion = parseKernelVersion <$> Text.readFile kernelVersionPath
 
 
@@ -50,7 +50,7 @@ kernelVersionPath :: String
 kernelVersionPath = "/proc/sys/kernel/osrelease"
 
 
-parseKernelVersion :: Text -> Either String KernelVersion
+parseKernelVersion :: Text -> Either Text KernelVersion
 parseKernelVersion =
   let unrecognized = Left "unrecognized kernel version"
       dec' (Right (x, extra)) | Text.null extra = Right x

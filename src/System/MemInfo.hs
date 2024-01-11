@@ -27,6 +27,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Fmt (
+  listF,
   (+|),
   (|+),
   (|++|),
@@ -76,10 +77,10 @@ printProcs cs = do
       namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
   if choiceByPid cs
     then case choiceWatchSecs cs of
-      Nothing -> withCmdTotals target namer printer withPid
+      Nothing -> readCmdTotal target namer withPid >>= either haltLostPid printer
       Just period -> withCmdTotals' period target namer printer withPid
     else case choiceWatchSecs cs of
-      Nothing -> withCmdTotals target namer printer dropId
+      Nothing -> readCmdTotal target namer dropId >>= either haltLostPid printer
       Just period -> withCmdTotals' period target namer printer dropId
 
 
@@ -109,17 +110,15 @@ onlyPrintTotal target showSwap onlyTotal totals = do
       when (isJust $ tRamFlaw target) exitFailure
 
 
-withCmdTotals ::
-  (Ord c, AsCmdName c) =>
+readCmdTotal ::
+  Ord a =>
   Target ->
   (ProcessID -> IO (Either LostPid Text)) ->
-  (Map c CmdTotal -> IO b) ->
-  ((ProcessID, Text, PerProc) -> (c, PerProc)) ->
-  IO b
-withCmdTotals target namer printer mkCmd = do
-  foldlEitherM (readNameAndStats namer target) (tPids target) >>= \case
-    Left err -> error $ show err
-    Right cmds -> printer $ amass (tHasPss target) $ map mkCmd cmds
+  ((ProcessID, Text, PerProc) -> (a, PerProc)) ->
+  IO (Either LostPid (Map a CmdTotal))
+readCmdTotal target namer mkCmd = do
+  let amass' cmds = amass (tHasPss target) $ map mkCmd cmds
+  fmap amass' <$> foldlEitherM (readNameAndStats namer target) (tPids target)
 
 
 withCmdTotals' ::
@@ -201,7 +200,7 @@ verify cs = case choicePidsToShow cs of
   Nothing -> do
     -- if choicePidsToShow is Nothing, must be running as root
     isRoot' <- isRoot
-    unless isRoot' $ error "run as root if no pids given using -p"
+    unless isRoot' $ haltErr "run as root if no pids given using -p"
     allKnownProcs >>= mkTarget
 
 
@@ -212,7 +211,7 @@ mkTarget tPids = do
       hasPss = Text.isInfixOf "Pss:"
       hasSwapPss = Text.isInfixOf "SwapPss:"
       memtypes x = (hasPss x, hasSwapPss x)
-  tKernel <- readKernelVersion >>= either error pure
+  tKernel <- readKernelVersion >>= either haltErr pure
   tHasSmaps <- doesPathExist smapsPath
   (tHasPss, tHasSwapPss) <- memtypes <$> readUtf8Text smapsPath
   checkForFlaws $
@@ -302,8 +301,23 @@ data LostPid
   | NoStatusParent ProcessID
   | NoCmdLine ProcessID
   | BadStatm ProcessID
-  | NoStatm ProcessID
+  | NoProc ProcessID
   deriving (Eq, Show)
+
+
+fmtLostPid :: LostPid -> Text
+fmtLostPid (NoStatusCmd pid) = "missing:name in {proc_root}/" +| toInteger pid |+ "/status"
+fmtLostPid (NoStatusParent pid) = "missing:ppid in {proc_root}/" +| toInteger pid |+ "/status"
+fmtLostPid (NoExeFile pid) = "missing:{proc_root}/" +| toInteger pid |+ "/exe"
+fmtLostPid (NoCmdLine pid) = "missing:{proc_root}/" +| toInteger pid |+ "/cmdline"
+fmtLostPid (NoProc pid) = "missing:all memory stats files for pid:" +| toInteger pid |+ ""
+fmtLostPid (BadStatm pid) = "missing:expected memory stats in {proc_root}/" +| toInteger pid |+ "/statm"
+
+
+haltLostPid :: LostPid -> IO a
+haltLostPid err = do
+  Text.hPutStrLn stderr $ "halting due to " +| fmtLostPid err |+ ""
+  exitFailure
 
 
 exeInfo :: ProcessID -> IO (Either LostPid ExeInfo)
@@ -345,13 +359,13 @@ checkAllExist :: NonEmpty ProcessID -> IO ()
 checkAllExist pids =
   nonExisting pids >>= \case
     [] -> pure ()
-    xs -> error $ "halted: these PIDs cannot be found " ++ show xs
+    xs -> haltErr $ "halted: missing processes for pids " +| listF (toInteger <$> xs) |+ ""
 
 
 allKnownProcs :: IO (NonEmpty ProcessID)
 allKnownProcs =
   let readNaturals = fmap (mapMaybe readMaybe)
-      orNoPids = flip maybe pure $ error "did not find any process IDs"
+      orNoPids = flip maybe pure $ haltErr "did not find any process IDs"
    in readNaturals (listDirectory procRoot)
         >>= filterM pidExeExists
         >>= orNoPids . nonEmpty
@@ -370,7 +384,7 @@ readMemStats target pid = do
           let readStatm' = readUtf8Text $ pidPath "statm" pid
               orLostPid = maybe (Left $ BadStatm pid) Right
           orLostPid . parseFromStatm (tKernel target) <$> readStatm'
-      | otherwise -> pure $ Left $ NoStatm pid
+      | otherwise -> pure $ Left $ NoProc pid
 
 
 readSmaps :: ProcessID -> IO Text
@@ -503,6 +517,12 @@ foldlEitherM' f xs =
         Right c -> pure (as, c : cs)
    in
     foldlM go (mempty, mempty) xs
+
+
+haltErr :: Text -> IO a
+haltErr err = do
+  errStrLn True err
+  exitFailure
 
 
 errStrLn :: Bool -> Text -> IO ()

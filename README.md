@@ -1,10 +1,10 @@
-# hs-mem-info
+# mem-info
 
-[![GitHub CI](https://github.com/adetokunbo/hs-mem-info/actions/workflows/nix-ci.yml/badge.svg)](https://github.com/adetokunbo/hs-mem-info/actions)
-[![Stackage Nightly](http://stackage.org/package/hs-mem-info/badge/nightly)](http://stackage.org/nightly/package/hs-mem-info)
+[![GitHub CI](https://github.com/adetokunbo/mem-info/actions/workflows/nix-ci.yml/badge.svg)](https://github.com/adetokunbo/mem-info/actions)
+[![Stackage Nightly](http://stackage.org/package/mem-info/badge/nightly)](http://stackage.org/nightly/package/mem-info)
 [![Hackage][hackage-badge]][hackage]
 [![Hackage Dependencies][hackage-deps-badge]][hackage-deps]
-[![BSD3](https://img.shields.io/badge/license-BSD3-green.svg?dummy)](https://github.com/adetokunbo/hs-mem-info/blob/master/LICENSE)
+[![BSD3](https://img.shields.io/badge/license-BSD3-green.svg?dummy)](https://github.com/adetokunbo/mem-info/blob/master/LICENSE)
 
 A utility to accurately report the core memory usage of programs
 
@@ -109,9 +109,9 @@ giving output like this:
 
 ```
 
-[hackage-deps-badge]: <https://img.shields.io/hackage-deps/v/hs-mem-info.svg>
-[hackage-deps]:       <http://packdeps.haskellers.com/feed?needle=hs-mem-info>
-[hackage-badge]:      <https://img.shields.io/hackage/v/hs-mem-info.svg>
-[hackage]:            <https://hackage.haskell.org/package/hs-mem-info>
+[hackage-deps-badge]: <https://img.shields.io/hackage-deps/v/mem-info.svg>
+[hackage-deps]:       <http://packdeps.haskellers.com/feed?needle=mem-info>
+[hackage-badge]:      <https://img.shields.io/hackage/v/mem-info.svg>
+[hackage]:            <https://hackage.haskell.org/package/mem-info>
 [ps_mem]:             <https://github.com/pixelb/ps_mem/blob/master/README.md>
 [pgrep]:              <https://www.man7.org/linux/man-pages/man1/pgrep.1.html>

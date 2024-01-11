@@ -1,6 +1,6 @@
-# Revision history for hs-mem-info
+# Revision history for mem-info
 
-`hs-mem-info` uses [PVP Versioning][1].
+`mem-info` uses [PVP Versioning][1].
 
 ## 0.1.0.0 -- 2023-12-13
 

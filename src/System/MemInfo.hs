@@ -450,7 +450,7 @@ checkForFlaws :: Target -> IO Target
 checkForFlaws target = do
   let pid = NE.head $ tPids target
       version = tKernel target
-      hasShared = fickleSharing version
+      fickleShared = fickleSharing version
       Target
         { tHasPss = hasPss
         , tHasSmaps = hasSmaps
@@ -470,7 +470,7 @@ checkForFlaws target = do
       let withSmaps = if hasPss then best else alt
           alt = (Just ExactForIsolatedMem, Just ExactForIsolatedSwap)
           best = (Nothing, Just ExactForIsolatedSwap)
-          withNoSmaps = Just $ if hasShared then SomeSharedMem else NoSharedMem
+          withNoSmaps = Just $ if fickleShared then NoSharedMem else SomeSharedMem
       pure $ if hasSmaps then withSmaps else (withNoSmaps, Just NoSwap)
     (major, _, _) | major > 2 && hasSmaps -> do
       let alt = (Nothing, Just ExactForIsolatedSwap)

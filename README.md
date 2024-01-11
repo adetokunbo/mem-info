@@ -6,14 +6,39 @@
 [![Hackage Dependencies][hackage-deps-badge]][hackage-deps]
 [![BSD3](https://img.shields.io/badge/license-BSD3-green.svg?dummy)](https://github.com/adetokunbo/hs-mem-info/blob/master/LICENSE)
 
-A utility to accurately report the core memory usage of a program
+A utility to accurately report the core memory usage of programs
 
-This a clone of [ps_mem], a command implemented in python, with its behavior
-available as a library that may be used from haskell programs.
+This is a clone of [ps_mem], the original command implemented in python, whose
+functionality is also available for use as library code in haskell programs.
 
 It provides an executable command `printmem`, that mimics `ps_mem`.
 
-## printmem usage
+## Rationale
+
+It determines how much RAM (and optionally Swap) is used per *program*, not per
+process, i.e, all the `httpd`, `postgres` or `firefox` processes are grouped
+together.
+
+Normally, it reports
+
+```
+sum (private RAM for all processes) + sum (shared RAM for all processes)
+```
+
+and optionally (when `-S` is specifed)
+
+```
+sum (swap for all processes)
+```
+
+Calculating the shared RAM accurately is a slightly complex task and one that is
+less accurate on older linux kernels; `printmem` chooses the most accurate
+method available.
+
+When `(-d|--discriminate-by-pid)` option is specified, it switches to the more
+common per-process breakdown of the RAM measurements.
+
+## Usage
 
 ```
 Usage: printmem [-s|--split-args] [-t|--total] [-d|--discriminate-by-pid]
@@ -33,9 +58,17 @@ Available options:
 
 ### Example output
 
-The [-p <pid1> -p pid2 ... -p pidN ] option allows filtering the results.
+You can run `printmem` *without* filtering; this will try to display data for
+all running processes, so sudo is required
 
-E.g., to restrict output to the current $USER you could obtain the user process IDs using pgrep comme ca:
+```sudo printmem```
+
+Usually, you'll want to filter the results. which is supported by the `-p <pid>`
+option.  This can be specified multiple times to select multiple processes. `pgrep` is great companion tool for obtaining the specific sets of pids for filtering.
+
+#### Example: breakdown the memory use of the current user
+
+To restrict output to the current $USER you could obtain the user process IDs using pgrep comme ca:
 
 ```
 sudo printmem -S -p $(pgrep -d' -p ' -u $USER)
@@ -57,10 +90,24 @@ giving output like this:
 
 ```
 
-Note that you can run `printmem` *without* filtering; this will try to display
-data for all running processes so sudo is required
+#### Example: show all the memory used by postgres
 
-```sudo printmem```
+`postgres` runs as multiple co-operating processes; use `pgrep` to determine the pids comme ca:
+
+```
+sudo printmem -S -p $(pgrep -d' -p ' postgres)
+```
+
+giving output like this:
+
+```
+  Private  +   Shared   =   RAM Used Swap Used  Program
+  25.9 MiB +   39.5 MiB =   65.3 MiB 101.0 KiB  postgres (21)
+----------------------------------------------
+                            65.3 MiB 101.0 KiB
+==============================================
+
+```
 
 [hackage-deps-badge]: <https://img.shields.io/hackage-deps/v/hs-mem-info.svg>
 [hackage-deps]:       <http://packdeps.haskellers.com/feed?needle=hs-mem-info>

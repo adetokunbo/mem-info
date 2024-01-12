@@ -32,11 +32,6 @@ import Fmt (
   (|+),
   (|++|),
  )
-import System.Directory (
-  doesFileExist,
-  getSymbolicLinkTarget,
-  listDirectory,
- )
 import System.Exit (exitFailure)
 import System.MemInfo.Choices (Choices (..), getChoices)
 import System.MemInfo.Prelude

@@ -27,6 +27,7 @@ module System.MemInfo.Prelude (
   module Data.Text.Encoding,
   module Numeric.Natural,
   module System.FilePath,
+  module System.Directory,
   module System.IO.Error,
   module System.IO,
   module System.Posix.Types,
@@ -47,6 +48,11 @@ import Data.Set (Set)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
 import Numeric.Natural (Natural)
+import System.Directory (
+  doesFileExist,
+  getSymbolicLinkTarget,
+  listDirectory,
+ )
 import System.FilePath (takeBaseName)
 import System.IO (stderr)
 import System.IO.Error (isDoesNotExistError, isPermissionError)

@@ -19,7 +19,7 @@ module System.MemInfo (
   printProcs,
 ) where
 
-import Data.Bifunctor (first)
+import Data.Bifunctor (Bifunctor (..), first)
 import qualified Data.ByteString as BS
 import Data.Functor ((<&>))
 import qualified Data.List.NonEmpty as NE
@@ -73,15 +73,19 @@ printProcs cs = do
       dropId (_, name, stats) = (name, stats)
       printEachCmd totals = printCmdTotals target showSwap onlyTotal totals
       printTheTotal = onlyPrintTotal target showSwap onlyTotal
-      printer cmds = if onlyTotal then printTheTotal cmds else printEachCmd cmds
+      showTotal cmds = if onlyTotal then printTheTotal cmds else printEachCmd cmds
       namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
   if choiceByPid cs
     then case choiceWatchSecs cs of
-      Nothing -> readCmdTotal target namer withPid >>= either haltLostPid printer
-      Just period -> withCmdTotals' period target namer printer withPid
+      Nothing -> readCmdTotal target namer withPid >>= either haltLostPid showTotal
+      Just period -> do
+        let unfold = unfoldCmdTotalAfter period namer withPid
+        loopShowingTotals unfold target showTotal
     else case choiceWatchSecs cs of
-      Nothing -> readCmdTotal target namer dropId >>= either haltLostPid printer
-      Just period -> withCmdTotals' period target namer printer dropId
+      Nothing -> readCmdTotal target namer dropId >>= either haltLostPid showTotal
+      Just period -> do
+        let unfold = unfoldCmdTotalAfter period namer dropId
+        loopShowingTotals unfold target showTotal
 
 
 printCmdTotals :: AsCmdName a => Target -> Bool -> Bool -> Map a CmdTotal -> IO ()
@@ -121,34 +125,54 @@ readCmdTotal target namer mkCmd = do
   fmap amass' <$> foldlEitherM (readNameAndStats namer target) (tPids target)
 
 
-withCmdTotals' ::
+loopShowingTotals ::
   (Ord c, AsCmdName c) =>
-  Natural ->
+  (Target -> IO ([ProcessID], Maybe (Map c CmdTotal, Target))) ->
   Target ->
-  (ProcessID -> IO (Either LostPid Text)) ->
   (Map c CmdTotal -> IO ()) ->
-  ((ProcessID, Text, PerProc) -> (c, PerProc)) ->
   IO ()
-withCmdTotals' delaySecs target namer printer mkCmd = do
-  let periodMicros = 1000000 * fromInteger (toInteger delaySecs)
-      clearScreen = putStrLn "\o033c"
+loopShowingTotals unfold target showTotal = do
+  let clearScreen = putStrLn "\o033c"
+      errHalting = errStrLn False "halting: all monitored processes have stopped"
+      handleNext (stopped, nextMb) = do
+        warnStopped stopped
+        flip (maybe errHalting) nextMb $ \(total, updated) -> do
+          clearScreen
+          showTotal total
+          go updated
+      go initial = unfold initial >>= handleNext
+  go target
+
+
+unfoldCmdTotalAfter ::
+  (Ord a, Integral p) =>
+  p ->
+  (ProcessID -> IO (Either LostPid Text)) ->
+  ((ProcessID, Text, PerProc) -> (a, PerProc)) ->
+  Target ->
+  IO ([ProcessID], Maybe (Map a CmdTotal, Target))
+unfoldCmdTotalAfter spanSecs namer mkCmd target = do
+  let spanMicros = 1000000 * fromInteger (toInteger spanSecs)
       Target {tPids = pids, tHasPss = hasPss} = target
-      go =
-        foldlEitherM' (readNameAndStats namer target) pids >>= \case
-          (stopped, []) -> do
-            warnStopped stopped
-            Text.putStrLn "all monitored processes have stopped; terminating..."
-          (stopped, xs) -> do
-            clearScreen
-            unless (null stopped) $ warnStopped stopped
-            printer $ amass hasPss $ map mkCmd xs
-            threadDelay periodMicros
-            go
-  go
+      resOf _ [] = Nothing
+      resOf stopped xs = case dropStoppedPids target stopped of
+        Just updated -> Just (amass hasPss (map mkCmd xs), updated)
+        Nothing -> Nothing
+      nextState (stopped, xs) = (stopped, resOf stopped xs)
+
+  threadDelay spanMicros
+  nextState <$> foldlEitherM' (readNameAndStats namer target) pids
+
+
+dropStoppedPids :: Target -> [ProcessID] -> Maybe Target
+dropStoppedPids target [] = Just target
+dropStoppedPids target@(Target {tPids = pids}) stopped =
+  let changePids tPids = target {tPids}
+   in changePids <$> nonEmpty (NE.filter (`notElem` stopped) pids)
 
 
 warnStopped :: [ProcessID] -> IO ()
-warnStopped pids = do
+warnStopped pids = unless (null pids) $ do
   let errMsg = "some processes stopped and will no longer appear:pids:" +| toInteger <$> pids |+ ""
   errStrLn False errMsg
 
@@ -200,7 +224,7 @@ verify cs = case choicePidsToShow cs of
   Nothing -> do
     -- if choicePidsToShow is Nothing, must be running as root
     isRoot' <- isRoot
-    unless isRoot' $ haltErr "run as root if no pids are specified using -p"
+    unless isRoot' $ haltErr "run as root when no pids are specified using -p"
     allKnownProcs >>= mkTarget
 
 
@@ -306,12 +330,12 @@ data LostPid
 
 
 fmtLostPid :: LostPid -> Text
-fmtLostPid (NoStatusCmd pid) = "missing:name in {proc_root}/" +| toInteger pid |+ "/status"
-fmtLostPid (NoStatusParent pid) = "missing:ppid in {proc_root}/" +| toInteger pid |+ "/status"
+fmtLostPid (NoStatusCmd pid) = "missing:no name in {proc_root}/" +| toInteger pid |+ "/status"
+fmtLostPid (NoStatusParent pid) = "missing:no ppid in {proc_root}/" +| toInteger pid |+ "/status"
 fmtLostPid (NoExeFile pid) = "missing:{proc_root}/" +| toInteger pid |+ "/exe"
 fmtLostPid (NoCmdLine pid) = "missing:{proc_root}/" +| toInteger pid |+ "/cmdline"
-fmtLostPid (NoProc pid) = "missing:all memory stats files for pid:" +| toInteger pid |+ ""
-fmtLostPid (BadStatm pid) = "missing:expected memory stats in {proc_root}/" +| toInteger pid |+ "/statm"
+fmtLostPid (NoProc pid) = "missing:memory records for pid:" +| toInteger pid |+ ""
+fmtLostPid (BadStatm pid) = "missing:invalid memory record in {proc_root}/" +| toInteger pid |+ "/statm"
 
 
 haltLostPid :: LostPid -> IO a
@@ -359,7 +383,7 @@ checkAllExist :: NonEmpty ProcessID -> IO ()
 checkAllExist pids =
   nonExisting pids >>= \case
     [] -> pure ()
-    xs -> haltErr $ "can find process records for pids " +| listF (toInteger <$> xs) |+ ""
+    xs -> haltErr $ "no records available for: " +| listF (toInteger <$> xs) |+ ""
 
 
 allKnownProcs :: IO (NonEmpty ProcessID)

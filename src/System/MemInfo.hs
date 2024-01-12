@@ -20,7 +20,6 @@ module System.MemInfo (
 ) where
 
 import Data.Bifunctor (Bifunctor (..), first)
-import qualified Data.ByteString as BS
 import Data.Functor ((<&>))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
@@ -346,10 +345,6 @@ exeInfo pid = do
 
 exists :: Text -> IO Bool
 exists = doesFileExist . Text.unpack
-
-
-readUtf8Text :: FilePath -> IO Text
-readUtf8Text = fmap decodeUtf8 . BS.readFile
 
 
 statusInfo :: ProcessID -> IO (Either LostPid StatusInfo)

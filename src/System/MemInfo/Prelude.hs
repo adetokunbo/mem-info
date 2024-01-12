@@ -10,6 +10,7 @@ module System.MemInfo.Prelude (
   -- * functions
   isNull,
   isNullOrSpace,
+  readUtf8Text,
 
   -- * module re-exports
   module Control.Concurrent,
@@ -37,6 +38,7 @@ module System.MemInfo.Prelude (
 import Control.Concurrent (threadDelay)
 import Control.Exception (handle, throwIO)
 import Control.Monad (filterM, unless, when)
+import qualified Data.ByteString as BS
 import Data.Char (isSpace)
 import Data.Foldable (foldlM)
 import Data.Hashable (hash)
@@ -68,3 +70,7 @@ isNull = (== '\0')
 -- | @True@ for the @null@ char or any space
 isNullOrSpace :: Char -> Bool
 isNullOrSpace x = isSpace x || isNull x
+
+
+readUtf8Text :: FilePath -> IO Text
+readUtf8Text = fmap decodeUtf8 . BS.readFile

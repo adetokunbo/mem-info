@@ -52,7 +52,12 @@ import System.MemInfo.Proc (
   parseFromStatm,
   parseStatusInfo,
  )
-import System.MemInfo.SysInfo (KernelVersion, fickleSharing, readKernelVersion)
+import System.MemInfo.SysInfo (
+  Target (..),
+  fmtRamFlaw,
+  fmtSwapFlaw,
+  mkTarget,
+ )
 import System.Posix.User (getEffectiveUserID)
 
 
@@ -192,52 +197,17 @@ reportFlaws target showSwap onlyTotal = do
   unless (onlyTotal && showSwap) $ maybe (pure ()) reportRam ram
 
 
--- | Represents the information needed to generate a memory usage report
-data Target = Target
-  { tPids :: !(NonEmpty ProcessID)
-  , tKernel :: !KernelVersion
-  , tHasPss :: !Bool
-  , tHasSwapPss :: !Bool
-  , tHasSmaps :: !Bool
-  , tRamFlaw :: Maybe RamFlaw
-  , tSwapFlaw :: Maybe SwapFlaw
-  }
-  deriving (Eq, Show)
-
-
 verify :: Choices -> IO Target
 verify cs = case choicePidsToShow cs of
   Just tPids -> do
     -- halt if any specified pid cannot be accessed
     checkAllExist tPids
-    mkTarget tPids
+    mkTarget tPids >>= either haltErr pure
   Nothing -> do
     -- if choicePidsToShow is Nothing, must be running as root
     isRoot' <- isRoot
     unless isRoot' $ haltErr "run as root when no pids are specified using -p"
-    allKnownProcs >>= mkTarget
-
-
-mkTarget :: NonEmpty ProcessID -> IO Target
-mkTarget tPids = do
-  let firstPid = NE.head tPids
-      smapsPath = pidPath "smaps" firstPid
-      hasPss = Text.isInfixOf "Pss:"
-      hasSwapPss = Text.isInfixOf "SwapPss:"
-      memtypes x = (hasPss x, hasSwapPss x)
-  tKernel <- readKernelVersion >>= either haltErr pure
-  tHasSmaps <- doesFileExist smapsPath
-  (tHasPss, tHasSwapPss) <- memtypes <$> readUtf8Text smapsPath
-  checkForFlaws $
-    Target
-      { tPids
-      , tKernel
-      , tHasPss
-      , tHasSwapPss
-      , tHasSmaps
-      , tRamFlaw = Nothing
-      , tSwapFlaw = Nothing
-      }
+    allKnownProcs >>= mkTarget >>= either haltErr pure
 
 
 procRoot :: String
@@ -407,87 +377,6 @@ readSmaps pid = do
       | hasRollup -> readUtf8Text rollupPath
       | hasSmaps -> readUtf8Text smapPath
       | otherwise -> pure Text.empty
-
-
--- | Describes inaccuracies in the RAM calculation
-data RamFlaw
-  = -- | no shared mem is reported
-    NoSharedMem
-  | -- | some shared mem not reported
-    SomeSharedMem
-  | -- | accurate only considering each process in isolation
-    ExactForIsolatedMem
-  deriving (Eq, Show, Ord)
-
-
-fmtRamFlaw :: RamFlaw -> Text
-fmtRamFlaw NoSharedMem =
-  Text.unlines
-    [ "shared memory is not reported by this system."
-    , "Values reported will be too large, and totals are not reported"
-    ]
-fmtRamFlaw SomeSharedMem =
-  Text.unlines
-    [ "shared memory is not reported accurately by this system."
-    , "Values reported could be too large, and totals are not reported"
-    ]
-fmtRamFlaw ExactForIsolatedMem =
-  Text.unlines
-    [ "shared memory is slightly over-estimated by this system"
-    , "for each program, so totals are not reported."
-    ]
-
-
--- | Describes inaccuracies in the swap measurement
-data SwapFlaw
-  = -- | not available
-    NoSwap
-  | -- | accurate only considering each process in isolation
-    ExactForIsolatedSwap
-  deriving (Eq, Show, Ord)
-
-
-fmtSwapFlaw :: SwapFlaw -> Text
-fmtSwapFlaw NoSwap = "swap is not reported by this system."
-fmtSwapFlaw ExactForIsolatedSwap =
-  Text.unlines
-    [ "swap is over-estimated by this system"
-    , "for each program, so totals are not reported."
-    ]
-
-
-checkForFlaws :: Target -> IO Target
-checkForFlaws target = do
-  let pid = NE.head $ tPids target
-      version = tKernel target
-      fickleShared = fickleSharing version
-      Target
-        { tHasPss = hasPss
-        , tHasSmaps = hasSmaps
-        , tHasSwapPss = hasSwapPss
-        } = target
-  (tRamFlaw, tSwapFlaw) <- case version of
-    (2, 4, _) -> do
-      let memInfoPath = pidPath "meminfo" pid
-          alt = (Just SomeSharedMem, Just NoSwap)
-          best = (Just ExactForIsolatedMem, Just NoSwap)
-          containsInact = Text.isInfixOf "Inact_"
-          checkInact x = if containsInact x then best else alt
-      doesFileExist memInfoPath >>= \case
-        False -> pure alt
-        _ -> checkInact <$> readUtf8Text memInfoPath
-    (2, 6, _) -> do
-      let withSmaps = if hasPss then best else alt
-          alt = (Just ExactForIsolatedMem, Just ExactForIsolatedSwap)
-          best = (Nothing, Just ExactForIsolatedSwap)
-          withNoSmaps = Just $ if fickleShared then NoSharedMem else SomeSharedMem
-      pure $ if hasSmaps then withSmaps else (withNoSmaps, Just NoSwap)
-    (major, _, _) | major > 2 && hasSmaps -> do
-      let alt = (Nothing, Just ExactForIsolatedSwap)
-          best = (Nothing, Nothing)
-      pure $ if hasSwapPss then best else alt
-    _ -> pure (Just ExactForIsolatedMem, Just NoSwap)
-  pure $ target {tRamFlaw, tSwapFlaw}
 
 
 overallTotals :: [CmdTotal] -> (Int, Int)

@@ -114,17 +114,6 @@ onlyPrintTotal target showSwap onlyTotal totals = do
       when (isJust $ tRamFlaw target) exitFailure
 
 
-readCmdTotal ::
-  Ord a =>
-  Target ->
-  (ProcessID -> IO (Either LostPid Text)) ->
-  ((ProcessID, Text, PerProc) -> (a, PerProc)) ->
-  IO (Either LostPid (Map a CmdTotal))
-readCmdTotal target namer mkCmd = do
-  let amass' cmds = amass (tHasPss target) $ map mkCmd cmds
-  fmap amass' <$> foldlEitherM (readNameAndStats namer target) (tPids target)
-
-
 loopShowingTotals ::
   (Ord c, AsCmdName c) =>
   (Target -> IO ([ProcessID], Maybe (Map c CmdTotal, Target))) ->
@@ -144,6 +133,12 @@ loopShowingTotals unfold target showTotal = do
   go target
 
 
+warnStopped :: [ProcessID] -> IO ()
+warnStopped pids = unless (null pids) $ do
+  let errMsg = "some processes stopped and will no longer appear:pids:" +| toInteger <$> pids |+ ""
+  errStrLn False errMsg
+
+
 unfoldCmdTotalAfter ::
   (Ord a, Integral p) =>
   p ->
@@ -153,9 +148,13 @@ unfoldCmdTotalAfter ::
   IO ([ProcessID], Maybe (Map a CmdTotal, Target))
 unfoldCmdTotalAfter spanSecs namer mkCmd target = do
   let spanMicros = 1000000 * fromInteger (toInteger spanSecs)
+      changePids tPids = target {tPids}
+      dropStopped t [] = Just t
+      dropStopped Target {tPids = ps} stopped =
+        changePids <$> nonEmpty (NE.filter (`notElem` stopped) ps)
       Target {tPids = pids, tHasPss = hasPss} = target
       resOf _ [] = Nothing
-      resOf stopped xs = case dropStoppedPids target stopped of
+      resOf stopped xs = case dropStopped target stopped of
         Just updated -> Just (amass hasPss (map mkCmd xs), updated)
         Nothing -> Nothing
       nextState (stopped, xs) = (stopped, resOf stopped xs)
@@ -164,17 +163,15 @@ unfoldCmdTotalAfter spanSecs namer mkCmd target = do
   nextState <$> foldlEitherM' (readNameAndStats namer target) pids
 
 
-dropStoppedPids :: Target -> [ProcessID] -> Maybe Target
-dropStoppedPids target [] = Just target
-dropStoppedPids target@(Target {tPids = pids}) stopped =
-  let changePids tPids = target {tPids}
-   in changePids <$> nonEmpty (NE.filter (`notElem` stopped) pids)
-
-
-warnStopped :: [ProcessID] -> IO ()
-warnStopped pids = unless (null pids) $ do
-  let errMsg = "some processes stopped and will no longer appear:pids:" +| toInteger <$> pids |+ ""
-  errStrLn False errMsg
+readCmdTotal ::
+  Ord a =>
+  Target ->
+  (ProcessID -> IO (Either LostPid Text)) ->
+  ((ProcessID, Text, PerProc) -> (a, PerProc)) ->
+  IO (Either LostPid (Map a CmdTotal))
+readCmdTotal target namer mkCmd = do
+  let amass' cmds = amass (tHasPss target) $ map mkCmd cmds
+  fmap amass' <$> foldlEitherM (readNameAndStats namer target) (tPids target)
 
 
 readNameAndStats ::

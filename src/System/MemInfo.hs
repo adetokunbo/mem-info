@@ -17,6 +17,7 @@ Implements a command that computes the memory usage of some processes
 module System.MemInfo (
   getChoices,
   printProcs,
+  readCmdTotal,
 ) where
 
 import Data.Bifunctor (Bifunctor (..), first)
@@ -61,26 +62,28 @@ import System.MemInfo.SysInfo (
 import System.Posix.User (getEffectiveUserID)
 
 
+-- | The derived name of a process or program in the memory report.
+type ProcName = Text
+
+
 -- | Report on the memory usage of the processes specified by @Choices@
 printProcs :: Choices -> IO ()
 printProcs cs = do
   target <- verify cs
   let showSwap = choiceShowSwap cs
       onlyTotal = choiceOnlyTotal cs
-      withPid (pid, name, stats) = ((pid, name), stats)
-      dropId (_, name, stats) = (name, stats)
       printEachCmd totals = printCmdTotals target showSwap onlyTotal totals
       printTheTotal = onlyPrintTotal target showSwap onlyTotal
       showTotal cmds = if onlyTotal then printTheTotal cmds else printEachCmd cmds
       namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
   if choiceByPid cs
     then case choiceWatchSecs cs of
-      Nothing -> readCmdTotal target namer withPid >>= either haltLostPid showTotal
+      Nothing -> readCmdTotal' namer withPid target >>= either haltLostPid showTotal
       Just period -> do
         let unfold = unfoldCmdTotalAfter period namer withPid
         loopShowingTotals unfold target showTotal
     else case choiceWatchSecs cs of
-      Nothing -> readCmdTotal target namer dropId >>= either haltLostPid showTotal
+      Nothing -> readCmdTotal' namer dropId target >>= either haltLostPid showTotal
       Just period -> do
         let unfold = unfoldCmdTotalAfter period namer dropId
         loopShowingTotals unfold target showTotal
@@ -140,8 +143,8 @@ warnStopped pids = unless (null pids) $ do
 unfoldCmdTotalAfter ::
   (Ord a, Integral p) =>
   p ->
-  (ProcessID -> IO (Either LostPid Text)) ->
-  ((ProcessID, Text, PerProc) -> (a, PerProc)) ->
+  (ProcessID -> IO (Either LostPid ProcName)) ->
+  ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   Target ->
   IO ([ProcessID], Maybe (Map a CmdTotal, Target))
 unfoldCmdTotalAfter spanSecs namer mkCmd target = do
@@ -161,22 +164,27 @@ unfoldCmdTotalAfter spanSecs namer mkCmd target = do
   nextState <$> foldlEitherM' (readNameAndStats namer target) pids
 
 
-readCmdTotal ::
+-- | Load the @'CmdTotal'@ corresponding to given @'Target'@
+readCmdTotal :: Target -> IO (Either LostPid (Map ProcName CmdTotal))
+readCmdTotal = readCmdTotal' nameFor dropId
+
+
+readCmdTotal' ::
   Ord a =>
+  (ProcessID -> IO (Either LostPid ProcName)) ->
+  ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   Target ->
-  (ProcessID -> IO (Either LostPid Text)) ->
-  ((ProcessID, Text, PerProc) -> (a, PerProc)) ->
   IO (Either LostPid (Map a CmdTotal))
-readCmdTotal target namer mkCmd = do
+readCmdTotal' namer mkCmd target = do
   let amass' cmds = amass (tHasPss target) $ map mkCmd cmds
   fmap amass' <$> foldlEitherM (readNameAndStats namer target) (tPids target)
 
 
 readNameAndStats ::
-  (ProcessID -> IO (Either LostPid Text)) ->
+  (ProcessID -> IO (Either LostPid ProcName)) ->
   Target ->
   ProcessID ->
-  IO (Either LostPid (ProcessID, Text, PerProc))
+  IO (Either LostPid (ProcessID, ProcName, PerProc))
 readNameAndStats namer target pid = do
   namer pid >>= \case
     Left e -> pure $ Left e
@@ -229,7 +237,7 @@ pidExeExists :: ProcessID -> IO Bool
 pidExeExists = fmap (either (const False) (const True)) . exeInfo
 
 
-nameAsFullCmd :: ProcessID -> IO (Either LostPid Text)
+nameAsFullCmd :: ProcessID -> IO (Either LostPid ProcName)
 nameAsFullCmd pid = do
   let cmdlinePath = pidPath "cmdline" pid
       err = NoCmdLine pid
@@ -238,7 +246,7 @@ nameAsFullCmd pid = do
   readUtf8Text cmdlinePath >>= (pure . orLostPid) . parseCmdline
 
 
-nameFromExeOnly :: ProcessID -> IO (Either LostPid Text)
+nameFromExeOnly :: ProcessID -> IO (Either LostPid ProcName)
 nameFromExeOnly pid = do
   exeInfo pid >>= \case
     Right i | not $ eiDeleted i -> pure $ Right $ baseName $ eiOriginal i
@@ -261,13 +269,13 @@ nameFromExeOnly pid = do
     Left e -> pure $ Left e
 
 
-nameFor :: ProcessID -> IO (Either LostPid Text)
+nameFor :: ProcessID -> IO (Either LostPid ProcName)
 nameFor pid =
   nameFromExeOnly pid
     >>= either (pure . Left) (parentNameIfMatched pid)
 
 
-parentNameIfMatched :: ProcessID -> Text -> IO (Either LostPid Text)
+parentNameIfMatched :: ProcessID -> Text -> IO (Either LostPid ProcName)
 parentNameIfMatched pid candidate = do
   let isMatch = flip Text.isPrefixOf candidate . siName
   statusInfo pid >>= \case
@@ -428,3 +436,11 @@ errStrLn :: Bool -> Text -> IO ()
 errStrLn errOrWarn txt = do
   let prefix = if errOrWarn then "error: " else "warning: "
   Text.hPutStrLn stderr $ prefix <> txt
+
+
+withPid :: (ProcessID, Text, PerProc) -> ((ProcessID, Text), PerProc)
+withPid (pid, name, pp) = ((pid, name), pp)
+
+
+dropId :: (ProcessID, Text, PerProc) -> (Text, PerProc)
+dropId (_pid, name, pp) = (name, pp)

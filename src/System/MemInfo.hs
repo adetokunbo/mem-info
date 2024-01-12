@@ -18,6 +18,7 @@ module System.MemInfo (
   getChoices,
   printProcs,
   readCmdTotal,
+  readPidTotal,
   unfoldCmdTotalAfter,
 ) where
 
@@ -172,6 +173,19 @@ unfoldCmdTotalAfter' namer mkCmd spanSecs target = do
 
   threadDelay spanMicros
   nextState <$> foldlEitherM' (readNameAndStats namer target) pids
+
+
+-- | Load the @'CmdTotal'@ corresponding to the given @pid@
+readPidTotal :: ProcessID -> IO (Either LostPid (ProcName, CmdTotal))
+readPidTotal pid = do
+  let onePid = pid :| []
+      orNoProc = maybe (Left $ NoProc pid) Right . Map.lookupMin
+  mkTarget onePid >>= \case
+    Left _ -> pure $ Left $ NoProc pid
+    Right target -> do
+      readCmdTotal target >>= \case
+        Right x -> pure $ orNoProc x
+        Left err -> pure $ Left err
 
 
 -- | Load the @'CmdTotal'@ corresponding to given @'Target'@

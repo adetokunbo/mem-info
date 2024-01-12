@@ -34,7 +34,6 @@ import Fmt (
  )
 import System.Directory (
   doesFileExist,
-  doesPathExist,
   getSymbolicLinkTarget,
   listDirectory,
  )
@@ -233,7 +232,7 @@ mkTarget tPids = do
       hasSwapPss = Text.isInfixOf "SwapPss:"
       memtypes x = (hasPss x, hasSwapPss x)
   tKernel <- readKernelVersion >>= either haltErr pure
-  tHasSmaps <- doesPathExist smapsPath
+  tHasSmaps <- doesFileExist smapsPath
   (tHasPss, tHasSwapPss) <- memtypes <$> readUtf8Text smapsPath
   checkForFlaws $
     Target
@@ -351,7 +350,7 @@ exeInfo pid = do
 
 
 exists :: Text -> IO Bool
-exists = doesPathExist . Text.unpack
+exists = doesFileExist . Text.unpack
 
 
 readUtf8Text :: FilePath -> IO Text

@@ -18,6 +18,7 @@ module System.MemInfo (
   getChoices,
   printProcs,
   readCmdTotal,
+  unfoldCmdTotalAfter,
 ) where
 
 import Data.Bifunctor (Bifunctor (..), first)
@@ -79,13 +80,13 @@ printProcs cs = do
   if choiceByPid cs
     then case choiceWatchSecs cs of
       Nothing -> readCmdTotal' namer withPid target >>= either haltLostPid showTotal
-      Just period -> do
-        let unfold = unfoldCmdTotalAfter period namer withPid
+      Just spanSecs -> do
+        let unfold = unfoldCmdTotalAfter' namer withPid spanSecs
         loopShowingTotals unfold target showTotal
     else case choiceWatchSecs cs of
       Nothing -> readCmdTotal' namer dropId target >>= either haltLostPid showTotal
-      Just period -> do
-        let unfold = unfoldCmdTotalAfter period namer dropId
+      Just spanSecs -> do
+        let unfold = unfoldCmdTotalAfter' namer dropId spanSecs
         loopShowingTotals unfold target showTotal
 
 
@@ -140,14 +141,23 @@ warnStopped pids = unless (null pids) $ do
   errStrLn False errMsg
 
 
+-- | Load the @'CmdTotal'@ corresponding to given @'Target'@ after a delay in seconds.
 unfoldCmdTotalAfter ::
-  (Ord a, Integral p) =>
+  (Integral p) =>
   p ->
+  Target ->
+  IO ([ProcessID], Maybe (Map ProcName CmdTotal, Target))
+unfoldCmdTotalAfter = unfoldCmdTotalAfter' nameFor dropId
+
+
+unfoldCmdTotalAfter' ::
+  (Ord a, Integral p) =>
   (ProcessID -> IO (Either LostPid ProcName)) ->
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
+  p ->
   Target ->
   IO ([ProcessID], Maybe (Map a CmdTotal, Target))
-unfoldCmdTotalAfter spanSecs namer mkCmd target = do
+unfoldCmdTotalAfter' namer mkCmd spanSecs target = do
   let spanMicros = 1000000 * fromInteger (toInteger spanSecs)
       changePids tPids = target {tPids}
       dropStopped t [] = Just t

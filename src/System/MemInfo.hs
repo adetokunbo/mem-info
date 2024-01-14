@@ -26,9 +26,9 @@ module System.MemInfo (
   readForOnePid,
 
   -- * unfold @MemUsage@ in a stream
-  unfoldEitherMemUsageAfter',
-  unfoldEitherMemUsageAfter,
-  unfoldEitherMemUsage,
+  unfoldMemUsageAfter',
+  unfoldMemUsageAfter,
+  unfoldMemUsage,
 
   -- * determine the process/program name
   nameFromExeOnly,
@@ -64,8 +64,8 @@ import System.MemInfo.Print (
  )
 import System.MemInfo.Proc (
   BadStatus (..),
-  MemUsage (..),
   ExeInfo (..),
+  MemUsage (..),
   PerProc (..),
   StatusInfo (..),
   amass,
@@ -97,13 +97,13 @@ printProcs cs = do
     then case choiceWatchSecs cs of
       Nothing -> readMemUsage' namer withPid target >>= either haltLostPid showTotal
       Just spanSecs -> do
-        let unfold = unfoldEitherMemUsageAfter' namer withPid spanSecs
-        loopShowingTotals unfold target showTotal
+        let unfold = unfoldMemUsageAfter' namer withPid spanSecs
+        loopPrintMemUsages unfold target showTotal
     else case choiceWatchSecs cs of
       Nothing -> readMemUsage' namer dropId target >>= either haltLostPid showTotal
       Just spanSecs -> do
-        let unfold = unfoldEitherMemUsageAfter' namer dropId spanSecs
-        loopShowingTotals unfold target showTotal
+        let unfold = unfoldMemUsageAfter' namer dropId spanSecs
+        loopPrintMemUsages unfold target showTotal
 
 
 printMemUsages :: AsCmdName a => Target -> Bool -> Bool -> Map a MemUsage -> IO ()
@@ -132,13 +132,13 @@ onlyPrintTotal target showSwap onlyTotal totals = do
       when (isJust $ tRamFlaw target) exitFailure
 
 
-loopShowingTotals ::
+loopPrintMemUsages ::
   (Ord c, AsCmdName c) =>
   (Target -> IO (Either [ProcessID] (Map c MemUsage, [ProcessID], Target))) ->
   Target ->
   (Map c MemUsage -> IO ()) ->
   IO ()
-loopShowingTotals unfold target showTotal = do
+loopPrintMemUsages unfold target showTotal = do
   let clearScreen = putStrLn "\o033c"
       warnHalting = errStrLn False "halting: all monitored processes have stopped"
       handleNext (Left stopped) = do
@@ -163,29 +163,29 @@ warnStopped pids = unless (null pids) $ do
 type ProcName = Text
 
 
-{- | Like @'unfoldEitherMemUsageAfter'@, using the default choices for indexing
+{- | Like @'unfoldMemUsageAfter'@, using the default choices for indexing
 programs/processes
 -}
-unfoldEitherMemUsageAfter ::
+unfoldMemUsageAfter ::
   (Integral seconds) =>
   seconds ->
   Target ->
   IO (Either [ProcessID] (Map Text MemUsage, [ProcessID], Target))
-unfoldEitherMemUsageAfter = unfoldEitherMemUsageAfter' nameFor dropId
+unfoldMemUsageAfter = unfoldMemUsageAfter' nameFor dropId
 
 
--- | Like @'unfoldEitherMemUsage'@ but computes the @'MemUsage's@ after a delay
-unfoldEitherMemUsageAfter' ::
+-- | Like @'unfoldMemUsage'@ but computes the @'MemUsage's@ after a delay
+unfoldMemUsageAfter' ::
   (Ord a, Integral seconds) =>
   (ProcessID -> IO (Either LostPid ProcName)) ->
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   seconds ->
   Target ->
   IO (Either [ProcessID] (Map a MemUsage, [ProcessID], Target))
-unfoldEitherMemUsageAfter' namer mkCmd spanSecs target = do
+unfoldMemUsageAfter' namer mkCmd spanSecs target = do
   let spanMicros = 1000000 * fromInteger (toInteger spanSecs)
   threadDelay spanMicros
-  unfoldEitherMemUsage namer mkCmd target
+  unfoldMemUsage namer mkCmd target
 
 
 {- | Unfold @'MemUsage's@ specified by a @'Target'@
@@ -195,13 +195,13 @@ successful invocation viz the @[ProcessID]@ that is part of the @Right@, and
 also as the value in the @Left@, which is the result when all of the specified
 processes have stopped.
 -}
-unfoldEitherMemUsage ::
+unfoldMemUsage ::
   (Ord a) =>
   (ProcessID -> IO (Either LostPid ProcName)) ->
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   Target ->
   IO (Either [ProcessID] (Map a MemUsage, [ProcessID], Target))
-unfoldEitherMemUsage namer mkCmd target = do
+unfoldMemUsage namer mkCmd target = do
   let changePids tPids = target {tPids}
       dropStopped t [] = Just t
       dropStopped Target {tPids = ps} stopped =

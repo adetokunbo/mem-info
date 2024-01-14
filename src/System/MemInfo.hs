@@ -15,12 +15,30 @@ SPDX-License-Identifier: BSD3
 Implements a command that computes the memory usage of some processes
 -}
 module System.MemInfo (
+  -- * implement the system command @printmem@
   getChoices,
   printProcs,
 
-  -- * Read @CmdTotal@ directly
+  -- * read @CmdTotal@ directly
+  LostPid (..),
   readCmdTotal,
+  readCmdTotal',
   readPidTotal,
+
+  -- * unfold @CmdTotal@ in a stream
+  unfoldEitherCmdTotalAfter',
+  unfoldEitherCmdTotalAfter,
+  unfoldEitherCmdTotal,
+
+  -- * determine the process/program name
+  nameFromExeOnly,
+  nameFor,
+  nameAsFullCmd,
+
+  -- * index by program name or by processID
+  ProcName,
+  dropId,
+  withPid,
 ) where
 
 import Data.Bifunctor (Bifunctor (..))
@@ -145,8 +163,8 @@ warnStopped pids = unless (null pids) $ do
 type ProcName = Text
 
 
-{- | Like @'unfoldEitherCmdTotalAfter'@, using the default style for
-determing the program name
+{- | Like @'unfoldEitherCmdTotalAfter'@, using the default choices for indexing
+programs/processes
 -}
 unfoldEitherCmdTotalAfter ::
   (Integral seconds) =>
@@ -170,7 +188,7 @@ unfoldEitherCmdTotalAfter' namer mkCmd spanSecs target = do
   unfoldEitherCmdTotal namer mkCmd target
 
 
-{- | Unfold the @'CmdTotal's@ specified by a @'Target'@
+{- | Unfold @'CmdTotal's@ specified by a @'Target'@
 
 The @ProcessID@ of processes that have stopped are reported, both as part of
 successful invocation viz the @[ProcessID]@ that is part of the @Right@, and
@@ -208,7 +226,9 @@ readPidTotal pid = do
     Right target -> readCmdTotal target <&> orNoProc'
 
 
--- | Like @'readCmdTotal'@  but uses the default style for naming the process
+{- | Like @'readCmdTotal'@ but uses the default choices for indexing
+programs/processes
+-}
 readCmdTotal :: Target -> IO (Either LostPid (Map ProcName CmdTotal))
 readCmdTotal = readCmdTotal' nameFor dropId
 
@@ -288,6 +308,7 @@ pidExeExists :: ProcessID -> IO Bool
 pidExeExists = fmap (either (const False) (const True)) . exeInfo
 
 
+-- | Obtain the @ProcName@ as the full cmd path
 nameAsFullCmd :: ProcessID -> IO (Either LostPid ProcName)
 nameAsFullCmd pid = do
   let cmdlinePath = pidPath "cmdline" pid
@@ -297,6 +318,7 @@ nameAsFullCmd pid = do
   readUtf8Text cmdlinePath >>= (pure . orLostPid) . parseCmdline
 
 
+-- | Obtain the @ProcName@ by examining the path linked by @{proc_root}/pid/exe@
 nameFromExeOnly :: ProcessID -> IO (Either LostPid ProcName)
 nameFromExeOnly pid = do
   exeInfo pid >>= \case
@@ -320,6 +342,9 @@ nameFromExeOnly pid = do
     Left e -> pure $ Left e
 
 
+{- | Obtain the @ProcName@ by examining the path linked by @{proc_root}/pid/exe@
+or its parent's name if that is a better match
+-}
 nameFor :: ProcessID -> IO (Either LostPid ProcName)
 nameFor pid =
   nameFromExeOnly pid
@@ -338,6 +363,9 @@ parentNameIfMatched pid candidate = do
         _ -> pure $ Right $ siName si
 
 
+{- | Represents reasons a specified @pid =`ProcessID`@ may be not have memory
+records.
+-}
 data LostPid
   = NoExeFile ProcessID
   | NoStatusCmd ProcessID
@@ -489,9 +517,17 @@ errStrLn errOrWarn txt = do
   Text.hPutStrLn stderr $ prefix <> txt
 
 
+{- | Index a @'PerProc'@ using the program name and process ID.
+
+All @PerProc's@ are distinct with the when added to the @CmdTotal@
+-}
 withPid :: (ProcessID, Text, PerProc) -> ((ProcessID, Text), PerProc)
 withPid (pid, name, pp) = ((pid, name), pp)
 
 
-dropId :: (ProcessID, Text, PerProc) -> (Text, PerProc)
+{- | Index a @'PerProc'@ using just the program name
+
+@PerProc's@ with the same @ProcName@ will be merged when added to a @CmdTotal@
+-}
+dropId :: (ProcessID, ProcName, PerProc) -> (ProcName, PerProc)
 dropId (_pid, name, pp) = (name, pp)

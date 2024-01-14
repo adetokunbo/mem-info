@@ -170,9 +170,7 @@ warnStopped pids = unless (null pids) $ do
 type ProcName = Text
 
 
-{- | Like @'unfoldMemUsageAfter'@, using the default choices for indexing
-programs/processes
--}
+-- | Like @'unfoldMemUsageAfter'@, but uses the default choices for naming and indindexing the reported programs
 unfoldMemUsageAfter ::
   (Integral seconds) =>
   seconds ->
@@ -197,10 +195,9 @@ unfoldMemUsageAfter' namer mkCmd spanSecs bud = do
 
 {- | Unfold @'MemUsage's@ specified by a @'ReportBud'@
 
-The @ProcessID@ of processes that have stopped are reported, both as part of
-successful invocation viz the @[ProcessID]@ that is part of the @Right@, and
-also as the value in the @Left@, which is the result when all of the specified
-processes have stopped.
+The @ProcessID@ of stopped processes are reported, both as part of intermediate
+invocations (via the @[ProcessID]@ in the @Right@), and in the final one (as the
+value of the @Left@).
 -}
 unfoldMemUsage ::
   (Ord a) =>

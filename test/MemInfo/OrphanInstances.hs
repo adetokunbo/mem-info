@@ -28,8 +28,8 @@ instance GenValid ExeInfo where
   genValid = do
     eiDeleted <- genValid
     eiOriginal <- genValid
-    let eiTarget = if eiDeleted then eiOriginal <> " (deleted)" else eiOriginal
-    pure $ ExeInfo {eiDeleted, eiOriginal, eiTarget}
+    let eiResultBud = if eiDeleted then eiOriginal <> " (deleted)" else eiOriginal
+    pure $ ExeInfo {eiDeleted, eiOriginal, eiResultBud}
 
 
 deriving anyclass instance GenValid StatusInfo

@@ -16,15 +16,15 @@ measured.
 module System.MemInfo.SysInfo (
   -- * data types
   KernelVersion,
-  Target (..),
+  ResultBud (..),
   RamFlaw (..),
   SwapFlaw (..),
 
   -- * functions
-  mkTarget,
+  mkResultBud,
   checkForFlaws,
-  fmtRamFlaw,
-  fmtSwapFlaw,
+  fmtRamFlaws,
+  fmtSwapFlaws,
   fickleSharing,
   parseKernelVersion,
   readKernelVersion,
@@ -79,14 +79,14 @@ parseKernelVersion =
 
 
 -- | Gathers the inputs needed to generate a memory usage report
-data Target = Target
-  { tPids :: !(NonEmpty ProcessID)
-  , tKernel :: !KernelVersion
-  , tHasPss :: !Bool
-  , tHasSwapPss :: !Bool
-  , tHasSmaps :: !Bool
-  , tRamFlaw :: Maybe RamFlaw
-  , tSwapFlaw :: Maybe SwapFlaw
+data ResultBud = ResultBud
+  { rbPids :: !(NonEmpty ProcessID)
+  , rbKernel :: !KernelVersion
+  , rbHasPss :: !Bool
+  , rbHasSwapPss :: !Bool
+  , rbHasSmaps :: !Bool
+  , rbRamFlaws :: Maybe RamFlaw
+  , rbSwapFlaws :: Maybe SwapFlaw
   }
   deriving (Eq, Show)
 
@@ -103,18 +103,18 @@ data RamFlaw
 
 
 -- | Provide @Text@ that explains the 'RamFlaw'
-fmtRamFlaw :: RamFlaw -> Text
-fmtRamFlaw NoSharedMem =
+fmtRamFlaws :: RamFlaw -> Text
+fmtRamFlaws NoSharedMem =
   Text.unlines
     [ "shared memory is not reported by this system."
     , "Values reported will be too large, and totals are not reported"
     ]
-fmtRamFlaw SomeSharedMem =
+fmtRamFlaws SomeSharedMem =
   Text.unlines
     [ "shared memory is not reported accurately by this system."
     , "Values reported could be too large, and totals are not reported"
     ]
-fmtRamFlaw ExactForIsolatedMem =
+fmtRamFlaws ExactForIsolatedMem =
   Text.unlines
     [ "shared memory is slightly over-estimated by this system"
     , "for each program, so totals are not reported."
@@ -131,9 +131,9 @@ data SwapFlaw
 
 
 -- | Provide @Text@ that explains the 'SwapFlaw'
-fmtSwapFlaw :: SwapFlaw -> Text
-fmtSwapFlaw NoSwap = "swap is not reported by this system."
-fmtSwapFlaw ExactForIsolatedSwap =
+fmtSwapFlaws :: SwapFlaw -> Text
+fmtSwapFlaws NoSwap = "swap is not reported by this system."
+fmtSwapFlaws ExactForIsolatedSwap =
   Text.unlines
     [ "swap is over-estimated by this system"
     , "for each program, so totals are not reported."
@@ -143,17 +143,17 @@ fmtSwapFlaw ExactForIsolatedSwap =
 {- | Examine the target system for @'RamFlaw's@ and @'SwapFlaw's@, and update
 @target@ reflect the findings.
 -}
-checkForFlaws :: Target -> IO Target
+checkForFlaws :: ResultBud -> IO ResultBud
 checkForFlaws target = do
-  let pid = NE.head $ tPids target
-      version = tKernel target
+  let pid = NE.head $ rbPids target
+      version = rbKernel target
       fickleShared = fickleSharing version
-      Target
-        { tHasPss = hasPss
-        , tHasSmaps = hasSmaps
-        , tHasSwapPss = hasSwapPss
+      ResultBud
+        { rbHasPss = hasPss
+        , rbHasSmaps = hasSmaps
+        , rbHasSwapPss = hasSwapPss
         } = target
-  (tRamFlaw, tSwapFlaw) <- case version of
+  (rbRamFlaws, rbSwapFlaws) <- case version of
     (2, 4, _) -> do
       let memInfoPath = pidPath "meminfo" pid
           alt = (Just SomeSharedMem, Just NoSwap)
@@ -174,32 +174,32 @@ checkForFlaws target = do
           best = (Nothing, Nothing)
       pure $ if hasSwapPss then best else alt
     _ -> pure (Just ExactForIsolatedMem, Just NoSwap)
-  pure $ target {tRamFlaw, tSwapFlaw}
+  pure $ target {rbRamFlaws, rbSwapFlaws}
 
 
--- | Construct a 'Target' for the specified @ProcessIDs@
-mkTarget :: NonEmpty ProcessID -> IO (Either Text Target)
-mkTarget tPids = do
-  let firstPid = NE.head tPids
+-- | Construct a 'ResultBud' for the specified @ProcessIDs@
+mkResultBud :: NonEmpty ProcessID -> IO (Either Text ResultBud)
+mkResultBud rbPids = do
+  let firstPid = NE.head rbPids
       smapsPath = pidPath "smaps" firstPid
       hasPss = Text.isInfixOf "Pss:"
       hasSwapPss = Text.isInfixOf "SwapPss:"
       memtypes x = (hasPss x, hasSwapPss x)
-  tHasSmaps <- doesFileExist smapsPath
-  (tHasPss, tHasSwapPss) <- memtypes <$> readUtf8Text smapsPath
+  rbHasSmaps <- doesFileExist smapsPath
+  (rbHasPss, rbHasSwapPss) <- memtypes <$> readUtf8Text smapsPath
   readKernelVersion >>= \case
     Left err -> pure $ Left err
-    Right tKernel ->
+    Right rbKernel ->
       fmap Right $
         checkForFlaws $
-          Target
-            { tPids
-            , tKernel
-            , tHasPss
-            , tHasSwapPss
-            , tHasSmaps
-            , tRamFlaw = Nothing
-            , tSwapFlaw = Nothing
+          ResultBud
+            { rbPids
+            , rbKernel
+            , rbHasPss
+            , rbHasSwapPss
+            , rbHasSmaps
+            , rbRamFlaws = Nothing
+            , rbSwapFlaws = Nothing
             }
 
 

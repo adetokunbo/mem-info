@@ -86,12 +86,12 @@ parseStatusInfo content =
 -- | Parses the target of  /proc/<pid>/exe into a @'ExeInfo'@
 parseExeInfo :: Text -> ExeInfo
 parseExeInfo x =
-  let eiTarget = takeTillNull x
-      eiDeleted = delEnd `Text.isSuffixOf` eiTarget
-      withoutDeleted = Text.replace delEnd "" eiTarget
-      eiOriginal = if eiDeleted then withoutDeleted else eiTarget
+  let eiResultBud = takeTillNull x
+      eiDeleted = delEnd `Text.isSuffixOf` eiResultBud
+      withoutDeleted = Text.replace delEnd "" eiResultBud
+      eiOriginal = if eiDeleted then withoutDeleted else eiResultBud
       takeTillNull = Text.takeWhile (not . isNull)
-   in ExeInfo {eiDeleted, eiOriginal, eiTarget}
+   in ExeInfo {eiDeleted, eiOriginal, eiResultBud}
 
 
 delEnd :: Text
@@ -100,19 +100,19 @@ delEnd = " (deleted)"
 
 -- | Represents the information about a process obtained from /proc/<pid>/exe
 data ExeInfo = ExeInfo
-  { eiTarget :: !Text
+  { eiResultBud :: !Text
   -- ^ the path that the link /proc/<pid>/exe resolves to
   , eiOriginal :: !Text
-  -- ^ a sanitized form of eiTarget; it removes the (deleted) suffix
+  -- ^ a sanitized form of eiResultBud; it removes the (deleted) suffix
   , eiDeleted :: !Bool
-  -- ^ does eiTarget end with (deleted)?
+  -- ^ does eiResultBud end with (deleted)?
   }
   deriving (Eq, Show, Generic)
 
 
 instance Validity ExeInfo where
-  validate ei | eiDeleted ei = check (eiOriginal ei <> delEnd == eiTarget ei) "target is actually deleted"
-  validate ei = check (eiOriginal ei == eiTarget ei) "target is not deleted"
+  validate ei | eiDeleted ei = check (eiOriginal ei <> delEnd == eiResultBud ei) "target is actually deleted"
+  validate ei = check (eiOriginal ei == eiResultBud ei) "target is not deleted"
 
 
 -- | Combine @'PerProc'@ metrics grouped by command name

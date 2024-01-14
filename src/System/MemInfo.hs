@@ -401,7 +401,7 @@ readMemStats target pid = do
 
 readSmaps :: ProcessID -> IO Text
 readSmaps pid = do
-  let smapPath = pidPath "maps" pid
+  let smapPath = pidPath "smaps" pid
       rollupPath = pidPath "smaps_rollup" pid
   hasSmaps <- doesFileExist smapPath
   hasRollup <- doesFileExist rollupPath

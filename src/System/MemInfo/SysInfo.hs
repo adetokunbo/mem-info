@@ -60,6 +60,7 @@ kernelVersionPath :: String
 kernelVersionPath = "/proc/sys/kernel/osrelease"
 
 
+-- | Parses @Text@ into a @'KernelVersion'@
 parseKernelVersion :: Text -> Either Text KernelVersion
 parseKernelVersion =
   let unrecognized = Left "unrecognized kernel version"
@@ -101,6 +102,7 @@ data RamFlaw
   deriving (Eq, Show, Ord)
 
 
+-- | Provide @Text@ that explains the 'RamFlaw'
 fmtRamFlaw :: RamFlaw -> Text
 fmtRamFlaw NoSharedMem =
   Text.unlines
@@ -128,6 +130,7 @@ data SwapFlaw
   deriving (Eq, Show, Ord)
 
 
+-- | Provide @Text@ that explains the 'SwapFlaw'
 fmtSwapFlaw :: SwapFlaw -> Text
 fmtSwapFlaw NoSwap = "swap is not reported by this system."
 fmtSwapFlaw ExactForIsolatedSwap =
@@ -137,6 +140,9 @@ fmtSwapFlaw ExactForIsolatedSwap =
     ]
 
 
+{- | Examine the target system for @'RamFlaw's@ and @'SwapFlaw's@, and update
+@target@ reflect the findings.
+-}
 checkForFlaws :: Target -> IO Target
 checkForFlaws target = do
   let pid = NE.head $ tPids target
@@ -171,6 +177,7 @@ checkForFlaws target = do
   pure $ target {tRamFlaw, tSwapFlaw}
 
 
+-- | Construct a 'Target' for the specified @ProcessIDs@
 mkTarget :: NonEmpty ProcessID -> IO (Either Text Target)
 mkTarget tPids = do
   let firstPid = NE.head tPids

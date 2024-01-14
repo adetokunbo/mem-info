@@ -221,16 +221,17 @@ unfoldMemUsage namer mkCmd bud = do
   nextState <$> foldlEitherM' (readNameAndStats namer bud) pids
 
 
--- | Load the @'MemUsage'@ specified by a @ProcessID@
+-- | Load the @'MemUsage'@ of a program specified by a @ProcessID@
 readForOnePid :: ProcessID -> IO (Either LostPid (ProcName, MemUsage))
 readForOnePid pid = do
-  let onePid = pid :| []
-      noProc = Left $ NoProc pid
-      orNoProc = maybe noProc Right . Map.lookupMin
-      orNoProc' = either Left orNoProc
-  mkReportBud onePid >>= \case
-    Left _ -> pure noProc
-    Right bud -> readMemUsage bud <&> orNoProc'
+  let noProc = Left $ NoProc pid
+      orNoProc = either Left $ maybe noProc Right . Map.lookupMin
+  nameFor pid >>= \case
+    Left err -> pure $ Left err
+    Right _ ->
+      mkReportBud (pid :| []) >>= \case
+        Left _ -> pure noProc
+        Right bud -> readMemUsage bud <&> orNoProc
 
 
 {- | Like @'readMemUsage'@ but uses the default choices for indexing

@@ -134,7 +134,7 @@ onlyPrintTotal target showSwap onlyTotal totals = do
 
 loopPrintMemUsages ::
   (Ord c, AsCmdName c) =>
-  (Target -> IO (Either [ProcessID] (Map c MemUsage, [ProcessID], Target))) ->
+  (Target -> IO (Either [ProcessID] ((Map c MemUsage, [ProcessID]), Target))) ->
   Target ->
   (Map c MemUsage -> IO ()) ->
   IO ()
@@ -144,7 +144,7 @@ loopPrintMemUsages unfold target showTotal = do
       handleNext (Left stopped) = do
         warnStopped stopped
         warnHalting
-      handleNext (Right (total, stopped, updated)) = do
+      handleNext (Right ((total, stopped), updated)) = do
         clearScreen
         warnStopped stopped
         showTotal total
@@ -170,7 +170,7 @@ unfoldMemUsageAfter ::
   (Integral seconds) =>
   seconds ->
   Target ->
-  IO (Either [ProcessID] (Map Text MemUsage, [ProcessID], Target))
+  IO (Either [ProcessID] ((Map Text MemUsage, [ProcessID]), Target))
 unfoldMemUsageAfter = unfoldMemUsageAfter' nameFor dropId
 
 
@@ -181,7 +181,7 @@ unfoldMemUsageAfter' ::
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   seconds ->
   Target ->
-  IO (Either [ProcessID] (Map a MemUsage, [ProcessID], Target))
+  IO (Either [ProcessID] ((Map a MemUsage, [ProcessID]), Target))
 unfoldMemUsageAfter' namer mkCmd spanSecs target = do
   let spanMicros = 1000000 * fromInteger (toInteger spanSecs)
   threadDelay spanMicros
@@ -200,7 +200,7 @@ unfoldMemUsage ::
   (ProcessID -> IO (Either LostPid ProcName)) ->
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   Target ->
-  IO (Either [ProcessID] (Map a MemUsage, [ProcessID], Target))
+  IO (Either [ProcessID] ((Map a MemUsage, [ProcessID]), Target))
 unfoldMemUsage namer mkCmd target = do
   let changePids tPids = target {tPids}
       dropStopped t [] = Just t
@@ -209,7 +209,7 @@ unfoldMemUsage namer mkCmd target = do
       Target {tPids = pids, tHasPss = hasPss} = target
       nextState (stopped, []) = Left stopped
       nextState (stopped, xs) = case dropStopped target stopped of
-        Just updated -> Right (amass hasPss (map mkCmd xs), stopped, updated)
+        Just updated -> Right ((amass hasPss (map mkCmd xs), stopped), updated)
         Nothing -> Left stopped
   nextState <$> foldlEitherM' (readNameAndStats namer target) pids
 

@@ -39,6 +39,9 @@ module System.MemInfo (
   ProcName,
   dropId,
   withPid,
+
+  -- * re-export
+  mkReportBud,
 ) where
 
 import Data.Bifunctor (Bifunctor (..))

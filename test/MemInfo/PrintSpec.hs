@@ -10,8 +10,8 @@ module MemInfo.PrintSpec (spec) where
 
 import qualified Data.Text as Text
 import System.MemInfo.Prelude
-import System.MemInfo.Print (fmtAsHeader, fmtCmdTotal, fmtOverall)
-import System.MemInfo.Proc (CmdTotal (..))
+import System.MemInfo.Print (fmtAsHeader, fmtMemUsage, fmtOverall)
+import System.MemInfo.Proc (MemUsage (..))
 import Test.Hspec
 
 
@@ -19,7 +19,7 @@ spec :: Spec
 spec = describe "module System.MemInfo.Print" $ do
   fmtAsHeaderSpec
   fmtOverallSpec
-  fmtCmdTotalSpec
+  fmtMemUsageSpec
 
 
 fmtAsHeaderSpec :: Spec
@@ -69,28 +69,28 @@ sampleSwapOverall =
     ]
 
 
-fmtCmdTotalSpec :: Spec
-fmtCmdTotalSpec = describe "fmtCmdTotal" $ do
+fmtMemUsageSpec :: Spec
+fmtMemUsageSpec = describe "fmtMemUsage" $ do
   describe "when swap is not required" $ do
     it "does not show it" $
-      fmtCmdTotal False sampleName sampleTotal `shouldBe` sampleTotalNoSwap
+      fmtMemUsage False sampleName sampleTotal `shouldBe` sampleTotalNoSwap
 
   describe "when swap is required" $ do
     it "does not show" $
-      fmtCmdTotal True sampleName sampleTotal `shouldBe` sampleTotalSwap
+      fmtMemUsage True sampleName sampleTotal `shouldBe` sampleTotalSwap
 
 
 sampleName :: (ProcessID, Text)
 sampleName = (100, "TestCommand")
 
 
-sampleTotal :: CmdTotal
+sampleTotal :: MemUsage
 sampleTotal =
-  CmdTotal
-    { ctShared = 1
-    , ctPrivate = 2
-    , ctCount = 3
-    , ctSwap = 4
+  MemUsage
+    { muShared = 1
+    , muPrivate = 2
+    , muCount = 3
+    , muSwap = 4
     }
 
 

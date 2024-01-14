@@ -19,16 +19,16 @@ module System.MemInfo (
   getChoices,
   printProcs,
 
-  -- * read @CmdTotal@ directly
+  -- * read @MemUsage@ directly
   LostPid (..),
-  readCmdTotal,
-  readCmdTotal',
-  readPidTotal,
+  readMemUsage,
+  readMemUsage',
+  readForOnePid,
 
-  -- * unfold @CmdTotal@ in a stream
-  unfoldEitherCmdTotalAfter',
-  unfoldEitherCmdTotalAfter,
-  unfoldEitherCmdTotal,
+  -- * unfold @MemUsage@ in a stream
+  unfoldEitherMemUsageAfter',
+  unfoldEitherMemUsageAfter,
+  unfoldEitherMemUsage,
 
   -- * determine the process/program name
   nameFromExeOnly,
@@ -59,12 +59,12 @@ import System.MemInfo.Prelude
 import System.MemInfo.Print (
   AsCmdName (..),
   fmtAsHeader,
-  fmtCmdTotal,
+  fmtMemUsage,
   fmtOverall,
  )
 import System.MemInfo.Proc (
   BadStatus (..),
-  CmdTotal (..),
+  MemUsage (..),
   ExeInfo (..),
   PerProc (..),
   StatusInfo (..),
@@ -89,35 +89,35 @@ printProcs cs = do
   target <- verify cs
   let showSwap = choiceShowSwap cs
       onlyTotal = choiceOnlyTotal cs
-      printEachCmd totals = printCmdTotals target showSwap onlyTotal totals
+      printEachCmd totals = printMemUsages target showSwap onlyTotal totals
       printTheTotal = onlyPrintTotal target showSwap onlyTotal
       showTotal cmds = if onlyTotal then printTheTotal cmds else printEachCmd cmds
       namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
   if choiceByPid cs
     then case choiceWatchSecs cs of
-      Nothing -> readCmdTotal' namer withPid target >>= either haltLostPid showTotal
+      Nothing -> readMemUsage' namer withPid target >>= either haltLostPid showTotal
       Just spanSecs -> do
-        let unfold = unfoldEitherCmdTotalAfter' namer withPid spanSecs
+        let unfold = unfoldEitherMemUsageAfter' namer withPid spanSecs
         loopShowingTotals unfold target showTotal
     else case choiceWatchSecs cs of
-      Nothing -> readCmdTotal' namer dropId target >>= either haltLostPid showTotal
+      Nothing -> readMemUsage' namer dropId target >>= either haltLostPid showTotal
       Just spanSecs -> do
-        let unfold = unfoldEitherCmdTotalAfter' namer dropId spanSecs
+        let unfold = unfoldEitherMemUsageAfter' namer dropId spanSecs
         loopShowingTotals unfold target showTotal
 
 
-printCmdTotals :: AsCmdName a => Target -> Bool -> Bool -> Map a CmdTotal -> IO ()
-printCmdTotals target showSwap onlyTotal totals = do
+printMemUsages :: AsCmdName a => Target -> Bool -> Bool -> Map a MemUsage -> IO ()
+printMemUsages target showSwap onlyTotal totals = do
   let overall = overallTotals $ Map.elems totals
       overallIsAccurate = (showSwap && tHasSwapPss target) || tHasPss target
-      print' (name, stats) = Text.putStrLn $ fmtCmdTotal showSwap name stats
+      print' (name, stats) = Text.putStrLn $ fmtMemUsage showSwap name stats
   Text.putStrLn $ fmtAsHeader showSwap
   mapM_ print' $ Map.toList totals
   when overallIsAccurate $ Text.putStrLn $ fmtOverall showSwap overall
   reportFlaws target showSwap onlyTotal
 
 
-onlyPrintTotal :: Target -> Bool -> Bool -> Map k CmdTotal -> IO ()
+onlyPrintTotal :: Target -> Bool -> Bool -> Map k MemUsage -> IO ()
 onlyPrintTotal target showSwap onlyTotal totals = do
   let (private, swap) = overallTotals $ Map.elems totals
       printRawTotal = Text.putStrLn . fmtMemBytes
@@ -134,9 +134,9 @@ onlyPrintTotal target showSwap onlyTotal totals = do
 
 loopShowingTotals ::
   (Ord c, AsCmdName c) =>
-  (Target -> IO (Either [ProcessID] (Map c CmdTotal, [ProcessID], Target))) ->
+  (Target -> IO (Either [ProcessID] (Map c MemUsage, [ProcessID], Target))) ->
   Target ->
-  (Map c CmdTotal -> IO ()) ->
+  (Map c MemUsage -> IO ()) ->
   IO ()
 loopShowingTotals unfold target showTotal = do
   let clearScreen = putStrLn "\o033c"
@@ -163,45 +163,45 @@ warnStopped pids = unless (null pids) $ do
 type ProcName = Text
 
 
-{- | Like @'unfoldEitherCmdTotalAfter'@, using the default choices for indexing
+{- | Like @'unfoldEitherMemUsageAfter'@, using the default choices for indexing
 programs/processes
 -}
-unfoldEitherCmdTotalAfter ::
+unfoldEitherMemUsageAfter ::
   (Integral seconds) =>
   seconds ->
   Target ->
-  IO (Either [ProcessID] (Map Text CmdTotal, [ProcessID], Target))
-unfoldEitherCmdTotalAfter = unfoldEitherCmdTotalAfter' nameFor dropId
+  IO (Either [ProcessID] (Map Text MemUsage, [ProcessID], Target))
+unfoldEitherMemUsageAfter = unfoldEitherMemUsageAfter' nameFor dropId
 
 
--- | Like @'unfoldEitherCmdTotal'@ but computes the @'CmdTotal's@ after a delay
-unfoldEitherCmdTotalAfter' ::
+-- | Like @'unfoldEitherMemUsage'@ but computes the @'MemUsage's@ after a delay
+unfoldEitherMemUsageAfter' ::
   (Ord a, Integral seconds) =>
   (ProcessID -> IO (Either LostPid ProcName)) ->
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   seconds ->
   Target ->
-  IO (Either [ProcessID] (Map a CmdTotal, [ProcessID], Target))
-unfoldEitherCmdTotalAfter' namer mkCmd spanSecs target = do
+  IO (Either [ProcessID] (Map a MemUsage, [ProcessID], Target))
+unfoldEitherMemUsageAfter' namer mkCmd spanSecs target = do
   let spanMicros = 1000000 * fromInteger (toInteger spanSecs)
   threadDelay spanMicros
-  unfoldEitherCmdTotal namer mkCmd target
+  unfoldEitherMemUsage namer mkCmd target
 
 
-{- | Unfold @'CmdTotal's@ specified by a @'Target'@
+{- | Unfold @'MemUsage's@ specified by a @'Target'@
 
 The @ProcessID@ of processes that have stopped are reported, both as part of
 successful invocation viz the @[ProcessID]@ that is part of the @Right@, and
 also as the value in the @Left@, which is the result when all of the specified
 processes have stopped.
 -}
-unfoldEitherCmdTotal ::
+unfoldEitherMemUsage ::
   (Ord a) =>
   (ProcessID -> IO (Either LostPid ProcName)) ->
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   Target ->
-  IO (Either [ProcessID] (Map a CmdTotal, [ProcessID], Target))
-unfoldEitherCmdTotal namer mkCmd target = do
+  IO (Either [ProcessID] (Map a MemUsage, [ProcessID], Target))
+unfoldEitherMemUsage namer mkCmd target = do
   let changePids tPids = target {tPids}
       dropStopped t [] = Just t
       dropStopped Target {tPids = ps} stopped =
@@ -214,39 +214,39 @@ unfoldEitherCmdTotal namer mkCmd target = do
   nextState <$> foldlEitherM' (readNameAndStats namer target) pids
 
 
--- | Load the @'CmdTotal'@ specified by a @ProcessID@
-readPidTotal :: ProcessID -> IO (Either LostPid (ProcName, CmdTotal))
-readPidTotal pid = do
+-- | Load the @'MemUsage'@ specified by a @ProcessID@
+readForOnePid :: ProcessID -> IO (Either LostPid (ProcName, MemUsage))
+readForOnePid pid = do
   let onePid = pid :| []
       noProc = Left $ NoProc pid
       orNoProc = maybe noProc Right . Map.lookupMin
       orNoProc' = either Left orNoProc
   mkTarget onePid >>= \case
     Left _ -> pure noProc
-    Right target -> readCmdTotal target <&> orNoProc'
+    Right target -> readMemUsage target <&> orNoProc'
 
 
-{- | Like @'readCmdTotal'@ but uses the default choices for indexing
+{- | Like @'readMemUsage'@ but uses the default choices for indexing
 programs/processes
 -}
-readCmdTotal :: Target -> IO (Either LostPid (Map ProcName CmdTotal))
-readCmdTotal = readCmdTotal' nameFor dropId
+readMemUsage :: Target -> IO (Either LostPid (Map ProcName MemUsage))
+readMemUsage = readMemUsage' nameFor dropId
 
 
-{- | Loads the @'CmdTotal'@ specified by a @'Target'@
+{- | Loads the @'MemUsage'@ specified by a @'Target'@
 
 Fails if
 
 - the system does not have the expected /proc filesystem with memory records
 - any of the processes in @'Target'@ are missing or inaccessible
 -}
-readCmdTotal' ::
+readMemUsage' ::
   Ord a =>
   (ProcessID -> IO (Either LostPid ProcName)) ->
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   Target ->
-  IO (Either LostPid (Map a CmdTotal))
-readCmdTotal' namer mkCmd target = do
+  IO (Either LostPid (Map a MemUsage))
+readMemUsage' namer mkCmd target = do
   let amass' cmds = amass (tHasPss target) $ map mkCmd cmds
   fmap amass' <$> foldlEitherM (readNameAndStats namer target) (tPids target)
 
@@ -466,9 +466,9 @@ readSmaps pid = do
       | otherwise -> pure Text.empty
 
 
-overallTotals :: [CmdTotal] -> (Int, Int)
+overallTotals :: [MemUsage] -> (Int, Int)
 overallTotals cts =
-  let step (private, swap) ct = (private + ctPrivate ct, swap + ctSwap ct)
+  let step (private, swap) ct = (private + muPrivate ct, swap + muSwap ct)
    in foldl' step (0, 0) cts
 
 
@@ -519,7 +519,7 @@ errStrLn errOrWarn txt = do
 
 {- | Index a @'PerProc'@ using the program name and process ID.
 
-All @PerProc's@ are distinct with the when added to the @CmdTotal@
+All @PerProc's@ are distinct with the when added to the @MemUsage@
 -}
 withPid :: (ProcessID, Text, PerProc) -> ((ProcessID, Text), PerProc)
 withPid (pid, name, pp) = ((pid, name), pp)
@@ -527,7 +527,7 @@ withPid (pid, name, pp) = ((pid, name), pp)
 
 {- | Index a @'PerProc'@ using just the program name
 
-@PerProc's@ with the same @ProcName@ will be merged when added to a @CmdTotal@
+@PerProc's@ with the same @ProcName@ will be merged when added to a @MemUsage@
 -}
 dropId :: (ProcessID, ProcName, PerProc) -> (ProcName, PerProc)
 dropId (_pid, name, pp) = (name, pp)

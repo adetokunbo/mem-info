@@ -16,7 +16,7 @@ module System.MemInfo.Print (
   -- * functions
   fmtAsHeader,
   fmtOverall,
-  fmtCmdTotal,
+  fmtMemUsage,
 ) where
 
 import qualified Data.Text as Text
@@ -32,21 +32,21 @@ import Fmt (
   (||+),
  )
 import System.MemInfo.Prelude
-import System.MemInfo.Proc (CmdTotal (..))
+import System.MemInfo.Proc (MemUsage (..))
 
 
 {- | Generates the text of a row displaying the metrics for a single command in
 the memory report
 -}
-fmtCmdTotal :: AsCmdName a => Bool -> a -> CmdTotal -> Text
-fmtCmdTotal showSwap name ct =
+fmtMemUsage :: AsCmdName a => Bool -> a -> MemUsage -> Text
+fmtMemUsage showSwap name ct =
   let
     padl = padLeftF columnWidth ' ' . fmtMem
-    private = padl $ ctPrivate ct - ctShared ct
-    shared = padl $ ctShared ct
-    all' = padl $ ctPrivate ct
-    swap' = padl $ ctSwap ct
-    name' = cmdWithCount name $ ctCount ct
+    private = padl $ muPrivate ct - muShared ct
+    shared = padl $ muShared ct
+    all' = padl $ muPrivate ct
+    swap' = padl $ muSwap ct
+    name' = cmdWithCount name $ muCount ct
     ram = "" +| private |+ " + " +| shared |+ " = " +| all' |+ ""
     label = "" +| name' |+ ""
    in

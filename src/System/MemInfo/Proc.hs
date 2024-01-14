@@ -16,7 +16,7 @@ grouping the contents of those files.
 -}
 module System.MemInfo.Proc (
   -- * data types
-  CmdTotal (..),
+  MemUsage (..),
   ExeInfo (..),
   PerProc (..),
   StatusInfo (..),
@@ -120,31 +120,35 @@ amass ::
   Ord a =>
   Bool ->
   [(a, PerProc)] ->
-  Map a CmdTotal
+  Map a MemUsage
 amass hasPss = Map.map (fromSubTotal hasPss) . foldl' (incrSubTotals hasPss) mempty
 
 
-fromSubTotal :: Bool -> SubTotal -> CmdTotal
+fromSubTotal :: Bool -> SubTotal -> MemUsage
 fromSubTotal hasPss st =
   let reducedPrivate = stPrivate st `div` stCount st
       areThreads = threadsNotProcs st
       reducedShared = stShared st `div` stCount st
       newPrivate = if areThreads then reducedPrivate else stPrivate st
       newShared = if areThreads && hasPss then reducedShared else stShared st
-   in CmdTotal
-        { ctShared = newShared + stSharedHuge st
-        , ctPrivate = newPrivate + newShared + stSharedHuge st
-        , ctSwap = stSwap st
-        , ctCount = stCount st
+   in MemUsage
+        { muShared = newShared + stSharedHuge st
+        , muPrivate = newPrivate + newShared + stSharedHuge st
+        , muSwap = stSwap st
+        , muCount = stCount st
         }
 
 
--- | Represents the memory totals for each command
-data CmdTotal = CmdTotal
-  { ctShared :: !Int
-  , ctPrivate :: !Int
-  , ctCount :: !Int
-  , ctSwap :: !Int
+-- | Represents the measured memory usage of a program
+data MemUsage = MemUsage
+  { muShared :: !Int
+  -- ^ the total shared memory in use
+  , muPrivate :: !Int
+  -- ^ the total private memory in use
+  , muCount :: !Int
+  -- ^ the number of processes running as the program
+  , muSwap :: !Int
+  -- ^ the total swap memory in use
   }
   deriving (Eq, Show)
 

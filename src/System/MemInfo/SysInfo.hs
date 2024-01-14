@@ -141,18 +141,18 @@ fmtSwapFlaws ExactForIsolatedSwap =
 
 
 {- | Examine the target system for @'RamFlaw's@ and @'SwapFlaw's@, and update
-@target@ reflect the findings.
+@bud@ reflect the findings.
 -}
 checkForFlaws :: ResultBud -> IO ResultBud
-checkForFlaws target = do
-  let pid = NE.head $ rbPids target
-      version = rbKernel target
+checkForFlaws bud = do
+  let pid = NE.head $ rbPids bud
+      version = rbKernel bud
       fickleShared = fickleSharing version
       ResultBud
         { rbHasPss = hasPss
         , rbHasSmaps = hasSmaps
         , rbHasSwapPss = hasSwapPss
-        } = target
+        } = bud
   (rbRamFlaws, rbSwapFlaws) <- case version of
     (2, 4, _) -> do
       let memInfoPath = pidPath "meminfo" pid
@@ -174,7 +174,7 @@ checkForFlaws target = do
           best = (Nothing, Nothing)
       pure $ if hasSwapPss then best else alt
     _ -> pure (Just ExactForIsolatedMem, Just NoSwap)
-  pure $ target {rbRamFlaws, rbSwapFlaws}
+  pure $ bud {rbRamFlaws, rbSwapFlaws}
 
 
 -- | Construct a 'ResultBud' for the specified @ProcessIDs@

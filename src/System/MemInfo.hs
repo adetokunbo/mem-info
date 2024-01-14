@@ -86,50 +86,50 @@ import System.Posix.User (getEffectiveUserID)
 -- | Report on the memory usage of the processes specified by @Choices@
 printProcs :: Choices -> IO ()
 printProcs cs = do
-  target <- verify cs
+  bud <- verify cs
   let showSwap = choiceShowSwap cs
       onlyTotal = choiceOnlyTotal cs
-      printEachCmd totals = printMemUsages target showSwap onlyTotal totals
-      printTheTotal = onlyPrintTotal target showSwap onlyTotal
+      printEachCmd totals = printMemUsages bud showSwap onlyTotal totals
+      printTheTotal = onlyPrintTotal bud showSwap onlyTotal
       showTotal cmds = if onlyTotal then printTheTotal cmds else printEachCmd cmds
       namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
   if choiceByPid cs
     then case choiceWatchSecs cs of
-      Nothing -> readMemUsage' namer withPid target >>= either haltLostPid showTotal
+      Nothing -> readMemUsage' namer withPid bud >>= either haltLostPid showTotal
       Just spanSecs -> do
         let unfold = unfoldMemUsageAfter' namer withPid spanSecs
-        loopPrintMemUsages unfold target showTotal
+        loopPrintMemUsages unfold bud showTotal
     else case choiceWatchSecs cs of
-      Nothing -> readMemUsage' namer dropId target >>= either haltLostPid showTotal
+      Nothing -> readMemUsage' namer dropId bud >>= either haltLostPid showTotal
       Just spanSecs -> do
         let unfold = unfoldMemUsageAfter' namer dropId spanSecs
-        loopPrintMemUsages unfold target showTotal
+        loopPrintMemUsages unfold bud showTotal
 
 
 printMemUsages :: AsCmdName a => ResultBud -> Bool -> Bool -> Map a MemUsage -> IO ()
-printMemUsages target showSwap onlyTotal totals = do
+printMemUsages bud showSwap onlyTotal totals = do
   let overall = overallTotals $ Map.elems totals
-      overallIsAccurate = (showSwap && rbHasSwapPss target) || rbHasPss target
+      overallIsAccurate = (showSwap && rbHasSwapPss bud) || rbHasPss bud
       print' (name, stats) = Text.putStrLn $ fmtMemUsage showSwap name stats
   Text.putStrLn $ fmtAsHeader showSwap
   mapM_ print' $ Map.toList totals
   when overallIsAccurate $ Text.putStrLn $ fmtOverall showSwap overall
-  reportFlaws target showSwap onlyTotal
+  reportFlaws bud showSwap onlyTotal
 
 
 onlyPrintTotal :: ResultBud -> Bool -> Bool -> Map k MemUsage -> IO ()
-onlyPrintTotal target showSwap onlyTotal totals = do
+onlyPrintTotal bud showSwap onlyTotal totals = do
   let (private, swap) = overallTotals $ Map.elems totals
       printRawTotal = Text.putStrLn . fmtMemBytes
   if showSwap
     then do
-      when (rbHasSwapPss target) $ printRawTotal swap
-      reportFlaws target showSwap onlyTotal
-      when (isJust $ rbSwapFlaws target) exitFailure
+      when (rbHasSwapPss bud) $ printRawTotal swap
+      reportFlaws bud showSwap onlyTotal
+      when (isJust $ rbSwapFlaws bud) exitFailure
     else do
-      when (rbHasPss target) $ printRawTotal private
-      reportFlaws target showSwap onlyTotal
-      when (isJust $ rbRamFlaws target) exitFailure
+      when (rbHasPss bud) $ printRawTotal private
+      reportFlaws bud showSwap onlyTotal
+      when (isJust $ rbRamFlaws bud) exitFailure
 
 
 loopPrintMemUsages ::
@@ -138,7 +138,7 @@ loopPrintMemUsages ::
   ResultBud ->
   (Map c MemUsage -> IO ()) ->
   IO ()
-loopPrintMemUsages unfold target showTotal = do
+loopPrintMemUsages unfold bud showTotal = do
   let clearScreen = putStrLn "\o033c"
       warnHalting = errStrLn False "halting: all monitored processes have stopped"
       handleNext (Left stopped) = do
@@ -150,7 +150,7 @@ loopPrintMemUsages unfold target showTotal = do
         showTotal total
         go updated
       go initial = unfold initial >>= handleNext
-  go target
+  go bud
 
 
 warnStopped :: [ProcessID] -> IO ()
@@ -182,10 +182,10 @@ unfoldMemUsageAfter' ::
   seconds ->
   ResultBud ->
   IO (Either [ProcessID] ((Map a MemUsage, [ProcessID]), ResultBud))
-unfoldMemUsageAfter' namer mkCmd spanSecs target = do
+unfoldMemUsageAfter' namer mkCmd spanSecs bud = do
   let spanMicros = 1000000 * fromInteger (toInteger spanSecs)
   threadDelay spanMicros
-  unfoldMemUsage namer mkCmd target
+  unfoldMemUsage namer mkCmd bud
 
 
 {- | Unfold @'MemUsage's@ specified by a @'ResultBud'@
@@ -201,17 +201,17 @@ unfoldMemUsage ::
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   ResultBud ->
   IO (Either [ProcessID] ((Map a MemUsage, [ProcessID]), ResultBud))
-unfoldMemUsage namer mkCmd target = do
-  let changePids rbPids = target {rbPids}
+unfoldMemUsage namer mkCmd bud = do
+  let changePids rbPids = bud {rbPids}
       dropStopped t [] = Just t
       dropStopped ResultBud {rbPids = ps} stopped =
         changePids <$> nonEmpty (NE.filter (`notElem` stopped) ps)
-      ResultBud {rbPids = pids, rbHasPss = hasPss} = target
+      ResultBud {rbPids = pids, rbHasPss = hasPss} = bud
       nextState (stopped, []) = Left stopped
-      nextState (stopped, xs) = case dropStopped target stopped of
+      nextState (stopped, xs) = case dropStopped bud stopped of
         Just updated -> Right ((amass hasPss (map mkCmd xs), stopped), updated)
         Nothing -> Left stopped
-  nextState <$> foldlEitherM' (readNameAndStats namer target) pids
+  nextState <$> foldlEitherM' (readNameAndStats namer bud) pids
 
 
 -- | Load the @'MemUsage'@ specified by a @ProcessID@
@@ -223,7 +223,7 @@ readForOnePid pid = do
       orNoProc' = either Left orNoProc
   mkResultBud onePid >>= \case
     Left _ -> pure noProc
-    Right target -> readMemUsage target <&> orNoProc'
+    Right bud -> readMemUsage bud <&> orNoProc'
 
 
 {- | Like @'readMemUsage'@ but uses the default choices for indexing
@@ -246,9 +246,9 @@ readMemUsage' ::
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   ResultBud ->
   IO (Either LostPid (Map a MemUsage))
-readMemUsage' namer mkCmd target = do
-  let amass' cmds = amass (rbHasPss target) $ map mkCmd cmds
-  fmap amass' <$> foldlEitherM (readNameAndStats namer target) (rbPids target)
+readMemUsage' namer mkCmd bud = do
+  let amass' cmds = amass (rbHasPss bud) $ map mkCmd cmds
+  fmap amass' <$> foldlEitherM (readNameAndStats namer bud) (rbPids bud)
 
 
 readNameAndStats ::
@@ -256,20 +256,20 @@ readNameAndStats ::
   ResultBud ->
   ProcessID ->
   IO (Either LostPid (ProcessID, ProcName, PerProc))
-readNameAndStats namer target pid = do
+readNameAndStats namer bud pid = do
   namer pid >>= \case
     Left e -> pure $ Left e
     Right name ->
-      readMemStats target pid >>= \case
+      readMemStats bud pid >>= \case
         Left e -> pure $ Left e
         Right stats -> pure $ Right (pid, name, stats)
 
 
 reportFlaws :: ResultBud -> Bool -> Bool -> IO ()
-reportFlaws target showSwap onlyTotal = do
+reportFlaws bud showSwap onlyTotal = do
   let reportSwap = errStrLn onlyTotal . fmtSwapFlaws
       reportRam = errStrLn onlyTotal . fmtRamFlaws
-      (ram, swap) = (rbRamFlaws target, rbSwapFlaws target)
+      (ram, swap) = (rbRamFlaws bud, rbSwapFlaws bud)
   -- when showSwap, report swap flaws
   -- unless (showSwap and onlyTotal), show ram flaws
   when showSwap $ maybe (pure ()) reportSwap swap
@@ -323,9 +323,9 @@ nameFromExeOnly :: ProcessID -> IO (Either LostPid ProcName)
 nameFromExeOnly pid = do
   exeInfo pid >>= \case
     Right i | not $ eiDeleted i -> pure $ Right $ baseName $ eiOriginal i
-    -- when the exe target ends with (deleted), the version of the exe used to
+    -- when the exe bud ends with (deleted), the version of the exe used to
     -- invoke the process has been removed from the filesystem. Sometimes it has
-    -- been updated; examining both the original target and the version in
+    -- been updated; examining both the original bud and the version in
     -- cmdline help determine what occurred
     Right ExeInfo {eiOriginal = orig} ->
       exists orig >>= \case
@@ -443,14 +443,14 @@ baseName = Text.pack . takeBaseName . Text.unpack
 
 
 readMemStats :: ResultBud -> ProcessID -> IO (Either LostPid PerProc)
-readMemStats target pid = do
+readMemStats bud pid = do
   statmExists <- doesFileExist $ pidPath "statm" pid
   if
-      | rbHasSmaps target -> Right . parseFromSmap <$> readSmaps pid
+      | rbHasSmaps bud -> Right . parseFromSmap <$> readSmaps pid
       | statmExists -> do
           let readStatm' = readUtf8Text $ pidPath "statm" pid
               orLostPid = maybe (Left $ BadStatm pid) Right
-          orLostPid . parseFromStatm (rbKernel target) <$> readStatm'
+          orLostPid . parseFromStatm (rbKernel bud) <$> readStatm'
       | otherwise -> pure $ Left $ NoProc pid
 
 

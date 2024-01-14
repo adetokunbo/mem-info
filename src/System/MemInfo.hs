@@ -86,27 +86,31 @@ import System.MemInfo.SysInfo (
 import System.Posix.User (getEffectiveUserID)
 
 
--- | Report on the memory usage of the processes specified by @Choices@
+{- | Print a report to @stdout@ displaying the memory usage of the programs
+specified by @Choices@
+-}
 printProcs :: Choices -> IO ()
 printProcs cs = do
   bud <- verify cs
-  let showSwap = choiceShowSwap cs
-      onlyTotal = choiceOnlyTotal cs
+  let Choices
+        { choiceShowSwap = showSwap
+        , choiceOnlyTotal = onlyTotal
+        , choiceWatchSecs = watchSecsMb
+        , choiceByPid = byPid
+        } = cs
       printEachCmd totals = printMemUsages bud showSwap onlyTotal totals
       printTheTotal = onlyPrintTotal bud showSwap onlyTotal
       showTotal cmds = if onlyTotal then printTheTotal cmds else printEachCmd cmds
       namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
-  if choiceByPid cs
-    then case choiceWatchSecs cs of
-      Nothing -> readMemUsage' namer withPid bud >>= either haltLostPid showTotal
-      Just spanSecs -> do
-        let unfold = unfoldMemUsageAfter' namer withPid spanSecs
-        loopPrintMemUsages unfold bud showTotal
-    else case choiceWatchSecs cs of
-      Nothing -> readMemUsage' namer dropId bud >>= either haltLostPid showTotal
-      Just spanSecs -> do
-        let unfold = unfoldMemUsageAfter' namer dropId spanSecs
-        loopPrintMemUsages unfold bud showTotal
+  case (watchSecsMb, byPid) of
+    (Nothing, True) -> readMemUsage' namer withPid bud >>= either haltLostPid showTotal
+    (Nothing, _) -> readMemUsage' namer dropId bud >>= either haltLostPid showTotal
+    (Just spanSecs, True) -> do
+      let unfold = unfoldMemUsageAfter' namer withPid spanSecs
+      loopPrintMemUsages unfold bud showTotal
+    (Just spanSecs, _) -> do
+      let unfold = unfoldMemUsageAfter' namer dropId spanSecs
+      loopPrintMemUsages unfold bud showTotal
 
 
 printMemUsages :: AsCmdName a => ReportBud -> Bool -> Bool -> Map a MemUsage -> IO ()

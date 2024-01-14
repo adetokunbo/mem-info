@@ -17,12 +17,13 @@ Implements a command that computes the memory usage of some processes
 module System.MemInfo (
   getChoices,
   printProcs,
+
+  -- * Read @CmdTotal@ directly
   readCmdTotal,
   readPidTotal,
-  unfoldCmdTotalAfter,
 ) where
 
-import Data.Bifunctor (Bifunctor (..), first)
+import Data.Bifunctor (Bifunctor (..))
 import Data.Functor ((<&>))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
@@ -64,10 +65,6 @@ import System.MemInfo.SysInfo (
 import System.Posix.User (getEffectiveUserID)
 
 
--- | The derived name of a process or program in the memory report.
-type ProcName = Text
-
-
 -- | Report on the memory usage of the processes specified by @Choices@
 printProcs :: Choices -> IO ()
 printProcs cs = do
@@ -82,12 +79,12 @@ printProcs cs = do
     then case choiceWatchSecs cs of
       Nothing -> readCmdTotal' namer withPid target >>= either haltLostPid showTotal
       Just spanSecs -> do
-        let unfold = unfoldCmdTotalAfter' namer withPid spanSecs
+        let unfold = unfoldEitherCmdTotalAfter' namer withPid spanSecs
         loopShowingTotals unfold target showTotal
     else case choiceWatchSecs cs of
       Nothing -> readCmdTotal' namer dropId target >>= either haltLostPid showTotal
       Just spanSecs -> do
-        let unfold = unfoldCmdTotalAfter' namer dropId spanSecs
+        let unfold = unfoldEitherCmdTotalAfter' namer dropId spanSecs
         loopShowingTotals unfold target showTotal
 
 
@@ -119,80 +116,110 @@ onlyPrintTotal target showSwap onlyTotal totals = do
 
 loopShowingTotals ::
   (Ord c, AsCmdName c) =>
-  (Target -> IO ([ProcessID], Maybe (Map c CmdTotal, Target))) ->
+  (Target -> IO (Either [ProcessID] (Map c CmdTotal, [ProcessID], Target))) ->
   Target ->
   (Map c CmdTotal -> IO ()) ->
   IO ()
 loopShowingTotals unfold target showTotal = do
   let clearScreen = putStrLn "\o033c"
-      errHalting = errStrLn False "halting: all monitored processes have stopped"
-      handleNext (stopped, nextMb) = do
+      warnHalting = errStrLn False "halting: all monitored processes have stopped"
+      handleNext (Left stopped) = do
         warnStopped stopped
-        flip (maybe errHalting) nextMb $ \(total, updated) -> do
-          clearScreen
-          showTotal total
-          go updated
+        warnHalting
+      handleNext (Right (total, stopped, updated)) = do
+        clearScreen
+        warnStopped stopped
+        showTotal total
+        go updated
       go initial = unfold initial >>= handleNext
   go target
 
 
 warnStopped :: [ProcessID] -> IO ()
 warnStopped pids = unless (null pids) $ do
-  let errMsg = "some processes stopped and will no longer appear:pids:" +| toInteger <$> pids |+ ""
+  let errMsg = "some processes stopped:pids:" +| toInteger <$> pids |+ ""
   errStrLn False errMsg
 
 
--- | Load the @'CmdTotal'@ corresponding to given @'Target'@ after a delay in seconds.
-unfoldCmdTotalAfter ::
-  (Integral p) =>
-  p ->
+-- | The name of a process or program in the memory report.
+type ProcName = Text
+
+
+{- | Like @'unfoldEitherCmdTotalAfter'@, using the default style for
+determing the program name
+-}
+unfoldEitherCmdTotalAfter ::
+  (Integral seconds) =>
+  seconds ->
   Target ->
-  IO ([ProcessID], Maybe (Map ProcName CmdTotal, Target))
-unfoldCmdTotalAfter = unfoldCmdTotalAfter' nameFor dropId
+  IO (Either [ProcessID] (Map Text CmdTotal, [ProcessID], Target))
+unfoldEitherCmdTotalAfter = unfoldEitherCmdTotalAfter' nameFor dropId
 
 
-unfoldCmdTotalAfter' ::
-  (Ord a, Integral p) =>
+-- | Like @'unfoldEitherCmdTotal'@ but computes the @'CmdTotal's@ after a delay
+unfoldEitherCmdTotalAfter' ::
+  (Ord a, Integral seconds) =>
   (ProcessID -> IO (Either LostPid ProcName)) ->
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
-  p ->
+  seconds ->
   Target ->
-  IO ([ProcessID], Maybe (Map a CmdTotal, Target))
-unfoldCmdTotalAfter' namer mkCmd spanSecs target = do
+  IO (Either [ProcessID] (Map a CmdTotal, [ProcessID], Target))
+unfoldEitherCmdTotalAfter' namer mkCmd spanSecs target = do
   let spanMicros = 1000000 * fromInteger (toInteger spanSecs)
-      changePids tPids = target {tPids}
+  threadDelay spanMicros
+  unfoldEitherCmdTotal namer mkCmd target
+
+
+{- | Unfold the @'CmdTotal's@ specified by a @'Target'@
+
+The @ProcessID@ of processes that have stopped are reported, both as part of
+successful invocation viz the @[ProcessID]@ that is part of the @Right@, and
+also as the value in the @Left@, which is the result when all of the specified
+processes have stopped.
+-}
+unfoldEitherCmdTotal ::
+  (Ord a) =>
+  (ProcessID -> IO (Either LostPid ProcName)) ->
+  ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
+  Target ->
+  IO (Either [ProcessID] (Map a CmdTotal, [ProcessID], Target))
+unfoldEitherCmdTotal namer mkCmd target = do
+  let changePids tPids = target {tPids}
       dropStopped t [] = Just t
       dropStopped Target {tPids = ps} stopped =
         changePids <$> nonEmpty (NE.filter (`notElem` stopped) ps)
       Target {tPids = pids, tHasPss = hasPss} = target
-      resOf _ [] = Nothing
-      resOf stopped xs = case dropStopped target stopped of
-        Just updated -> Just (amass hasPss (map mkCmd xs), updated)
-        Nothing -> Nothing
-      nextState (stopped, xs) = (stopped, resOf stopped xs)
-
-  threadDelay spanMicros
+      nextState (stopped, []) = Left stopped
+      nextState (stopped, xs) = case dropStopped target stopped of
+        Just updated -> Right (amass hasPss (map mkCmd xs), stopped, updated)
+        Nothing -> Left stopped
   nextState <$> foldlEitherM' (readNameAndStats namer target) pids
 
 
--- | Load the @'CmdTotal'@ corresponding to the given @pid@
+-- | Load the @'CmdTotal'@ specified by a @ProcessID@
 readPidTotal :: ProcessID -> IO (Either LostPid (ProcName, CmdTotal))
 readPidTotal pid = do
   let onePid = pid :| []
-      orNoProc = maybe (Left $ NoProc pid) Right . Map.lookupMin
+      noProc = Left $ NoProc pid
+      orNoProc = maybe noProc Right . Map.lookupMin
+      orNoProc' = either Left orNoProc
   mkTarget onePid >>= \case
-    Left _ -> pure $ Left $ NoProc pid
-    Right target -> do
-      readCmdTotal target >>= \case
-        Right x -> pure $ orNoProc x
-        Left err -> pure $ Left err
+    Left _ -> pure noProc
+    Right target -> readCmdTotal target <&> orNoProc'
 
 
--- | Load the @'CmdTotal'@ corresponding to given @'Target'@
+-- | Like @'readCmdTotal'@  but uses the default style for naming the process
 readCmdTotal :: Target -> IO (Either LostPid (Map ProcName CmdTotal))
 readCmdTotal = readCmdTotal' nameFor dropId
 
 
+{- | Loads the @'CmdTotal'@ specified by a @'Target'@
+
+Fails if
+
+- the system does not have the expected /proc filesystem with memory records
+- any of the processes in @'Target'@ are missing or inaccessible
+-}
 readCmdTotal' ::
   Ord a =>
   (ProcessID -> IO (Either LostPid ProcName)) ->

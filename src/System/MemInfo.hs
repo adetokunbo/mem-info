@@ -521,7 +521,7 @@ errStrLn errOrWarn txt = do
 
 All @PerProc's@ are distinct with the when added to the @MemUsage@
 -}
-withPid :: (ProcessID, Text, PerProc) -> ((ProcessID, Text), PerProc)
+withPid :: (ProcessID, ProcName, PerProc) -> ((ProcessID, ProcName), PerProc)
 withPid (pid, name, pp) = ((pid, name), pp)
 
 

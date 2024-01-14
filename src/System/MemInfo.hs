@@ -75,10 +75,10 @@ import System.MemInfo.Proc (
   parseStatusInfo,
  )
 import System.MemInfo.SysInfo (
-  ResultBud (..),
+  ReportBud (..),
   fmtRamFlaws,
   fmtSwapFlaws,
-  mkResultBud,
+  mkReportBud,
  )
 import System.Posix.User (getEffectiveUserID)
 
@@ -106,7 +106,7 @@ printProcs cs = do
         loopPrintMemUsages unfold bud showTotal
 
 
-printMemUsages :: AsCmdName a => ResultBud -> Bool -> Bool -> Map a MemUsage -> IO ()
+printMemUsages :: AsCmdName a => ReportBud -> Bool -> Bool -> Map a MemUsage -> IO ()
 printMemUsages bud showSwap onlyTotal totals = do
   let overall = overallTotals $ Map.elems totals
       overallIsAccurate = (showSwap && rbHasSwapPss bud) || rbHasPss bud
@@ -117,7 +117,7 @@ printMemUsages bud showSwap onlyTotal totals = do
   reportFlaws bud showSwap onlyTotal
 
 
-onlyPrintTotal :: ResultBud -> Bool -> Bool -> Map k MemUsage -> IO ()
+onlyPrintTotal :: ReportBud -> Bool -> Bool -> Map k MemUsage -> IO ()
 onlyPrintTotal bud showSwap onlyTotal totals = do
   let (private, swap) = overallTotals $ Map.elems totals
       printRawTotal = Text.putStrLn . fmtMemBytes
@@ -134,8 +134,8 @@ onlyPrintTotal bud showSwap onlyTotal totals = do
 
 loopPrintMemUsages ::
   (Ord c, AsCmdName c) =>
-  (ResultBud -> IO (Either [ProcessID] ((Map c MemUsage, [ProcessID]), ResultBud))) ->
-  ResultBud ->
+  (ReportBud -> IO (Either [ProcessID] ((Map c MemUsage, [ProcessID]), ReportBud))) ->
+  ReportBud ->
   (Map c MemUsage -> IO ()) ->
   IO ()
 loopPrintMemUsages unfold bud showTotal = do
@@ -169,8 +169,8 @@ programs/processes
 unfoldMemUsageAfter ::
   (Integral seconds) =>
   seconds ->
-  ResultBud ->
-  IO (Either [ProcessID] ((Map Text MemUsage, [ProcessID]), ResultBud))
+  ReportBud ->
+  IO (Either [ProcessID] ((Map Text MemUsage, [ProcessID]), ReportBud))
 unfoldMemUsageAfter = unfoldMemUsageAfter' nameFor dropId
 
 
@@ -180,15 +180,15 @@ unfoldMemUsageAfter' ::
   (ProcessID -> IO (Either LostPid ProcName)) ->
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   seconds ->
-  ResultBud ->
-  IO (Either [ProcessID] ((Map a MemUsage, [ProcessID]), ResultBud))
+  ReportBud ->
+  IO (Either [ProcessID] ((Map a MemUsage, [ProcessID]), ReportBud))
 unfoldMemUsageAfter' namer mkCmd spanSecs bud = do
   let spanMicros = 1000000 * fromInteger (toInteger spanSecs)
   threadDelay spanMicros
   unfoldMemUsage namer mkCmd bud
 
 
-{- | Unfold @'MemUsage's@ specified by a @'ResultBud'@
+{- | Unfold @'MemUsage's@ specified by a @'ReportBud'@
 
 The @ProcessID@ of processes that have stopped are reported, both as part of
 successful invocation viz the @[ProcessID]@ that is part of the @Right@, and
@@ -199,14 +199,14 @@ unfoldMemUsage ::
   (Ord a) =>
   (ProcessID -> IO (Either LostPid ProcName)) ->
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
-  ResultBud ->
-  IO (Either [ProcessID] ((Map a MemUsage, [ProcessID]), ResultBud))
+  ReportBud ->
+  IO (Either [ProcessID] ((Map a MemUsage, [ProcessID]), ReportBud))
 unfoldMemUsage namer mkCmd bud = do
   let changePids rbPids = bud {rbPids}
       dropStopped t [] = Just t
-      dropStopped ResultBud {rbPids = ps} stopped =
+      dropStopped ReportBud {rbPids = ps} stopped =
         changePids <$> nonEmpty (NE.filter (`notElem` stopped) ps)
-      ResultBud {rbPids = pids, rbHasPss = hasPss} = bud
+      ReportBud {rbPids = pids, rbHasPss = hasPss} = bud
       nextState (stopped, []) = Left stopped
       nextState (stopped, xs) = case dropStopped bud stopped of
         Just updated -> Right ((amass hasPss (map mkCmd xs), stopped), updated)
@@ -221,7 +221,7 @@ readForOnePid pid = do
       noProc = Left $ NoProc pid
       orNoProc = maybe noProc Right . Map.lookupMin
       orNoProc' = either Left orNoProc
-  mkResultBud onePid >>= \case
+  mkReportBud onePid >>= \case
     Left _ -> pure noProc
     Right bud -> readMemUsage bud <&> orNoProc'
 
@@ -229,22 +229,22 @@ readForOnePid pid = do
 {- | Like @'readMemUsage'@ but uses the default choices for indexing
 programs/processes
 -}
-readMemUsage :: ResultBud -> IO (Either LostPid (Map ProcName MemUsage))
+readMemUsage :: ReportBud -> IO (Either LostPid (Map ProcName MemUsage))
 readMemUsage = readMemUsage' nameFor dropId
 
 
-{- | Loads the @'MemUsage'@ specified by a @'ResultBud'@
+{- | Loads the @'MemUsage'@ specified by a @'ReportBud'@
 
 Fails if
 
 - the system does not have the expected /proc filesystem with memory records
-- any of the processes in @'ResultBud'@ are missing or inaccessible
+- any of the processes in @'ReportBud'@ are missing or inaccessible
 -}
 readMemUsage' ::
   Ord a =>
   (ProcessID -> IO (Either LostPid ProcName)) ->
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
-  ResultBud ->
+  ReportBud ->
   IO (Either LostPid (Map a MemUsage))
 readMemUsage' namer mkCmd bud = do
   let amass' cmds = amass (rbHasPss bud) $ map mkCmd cmds
@@ -253,7 +253,7 @@ readMemUsage' namer mkCmd bud = do
 
 readNameAndStats ::
   (ProcessID -> IO (Either LostPid ProcName)) ->
-  ResultBud ->
+  ReportBud ->
   ProcessID ->
   IO (Either LostPid (ProcessID, ProcName, PerProc))
 readNameAndStats namer bud pid = do
@@ -265,7 +265,7 @@ readNameAndStats namer bud pid = do
         Right stats -> pure $ Right (pid, name, stats)
 
 
-reportFlaws :: ResultBud -> Bool -> Bool -> IO ()
+reportFlaws :: ReportBud -> Bool -> Bool -> IO ()
 reportFlaws bud showSwap onlyTotal = do
   let reportSwap = errStrLn onlyTotal . fmtSwapFlaws
       reportRam = errStrLn onlyTotal . fmtRamFlaws
@@ -276,17 +276,17 @@ reportFlaws bud showSwap onlyTotal = do
   unless (onlyTotal && showSwap) $ maybe (pure ()) reportRam ram
 
 
-verify :: Choices -> IO ResultBud
+verify :: Choices -> IO ReportBud
 verify cs = case choicePidsToShow cs of
   Just rbPids -> do
     -- halt if any specified pid cannot be accessed
     checkAllExist rbPids
-    mkResultBud rbPids >>= either haltErr pure
+    mkReportBud rbPids >>= either haltErr pure
   Nothing -> do
     -- if choicePidsToShow is Nothing, must be running as root
     isRoot' <- isRoot
     unless isRoot' $ haltErr "run as root when no pids are specified using -p"
-    allKnownProcs >>= mkResultBud >>= either haltErr pure
+    allKnownProcs >>= mkReportBud >>= either haltErr pure
 
 
 procRoot :: String
@@ -442,7 +442,7 @@ baseName :: Text -> Text
 baseName = Text.pack . takeBaseName . Text.unpack
 
 
-readMemStats :: ResultBud -> ProcessID -> IO (Either LostPid PerProc)
+readMemStats :: ReportBud -> ProcessID -> IO (Either LostPid PerProc)
 readMemStats bud pid = do
   statmExists <- doesFileExist $ pidPath "statm" pid
   if

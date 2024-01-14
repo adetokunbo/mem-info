@@ -16,12 +16,12 @@ measured.
 module System.MemInfo.SysInfo (
   -- * data types
   KernelVersion,
-  ResultBud (..),
+  ReportBud (..),
   RamFlaw (..),
   SwapFlaw (..),
 
   -- * functions
-  mkResultBud,
+  mkReportBud,
   checkForFlaws,
   fmtRamFlaws,
   fmtSwapFlaws,
@@ -79,7 +79,7 @@ parseKernelVersion =
 
 
 -- | Gathers the inputs needed to generate a memory usage report
-data ResultBud = ResultBud
+data ReportBud = ReportBud
   { rbPids :: !(NonEmpty ProcessID)
   , rbKernel :: !KernelVersion
   , rbHasPss :: !Bool
@@ -143,12 +143,12 @@ fmtSwapFlaws ExactForIsolatedSwap =
 {- | Examine the target system for @'RamFlaw's@ and @'SwapFlaw's@, and update
 @bud@ reflect the findings.
 -}
-checkForFlaws :: ResultBud -> IO ResultBud
+checkForFlaws :: ReportBud -> IO ReportBud
 checkForFlaws bud = do
   let pid = NE.head $ rbPids bud
       version = rbKernel bud
       fickleShared = fickleSharing version
-      ResultBud
+      ReportBud
         { rbHasPss = hasPss
         , rbHasSmaps = hasSmaps
         , rbHasSwapPss = hasSwapPss
@@ -177,9 +177,9 @@ checkForFlaws bud = do
   pure $ bud {rbRamFlaws, rbSwapFlaws}
 
 
--- | Construct a 'ResultBud' for the specified @ProcessIDs@
-mkResultBud :: NonEmpty ProcessID -> IO (Either Text ResultBud)
-mkResultBud rbPids = do
+-- | Construct a 'ReportBud' for the specified @ProcessIDs@
+mkReportBud :: NonEmpty ProcessID -> IO (Either Text ReportBud)
+mkReportBud rbPids = do
   let firstPid = NE.head rbPids
       smapsPath = pidPath "smaps" firstPid
       hasPss = Text.isInfixOf "Pss:"
@@ -192,7 +192,7 @@ mkResultBud rbPids = do
     Right rbKernel ->
       fmap Right $
         checkForFlaws $
-          ResultBud
+          ReportBud
             { rbPids
             , rbKernel
             , rbHasPss

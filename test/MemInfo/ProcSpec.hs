@@ -33,7 +33,7 @@ spec = describe "module System.MemInfo.Proc" $ do
 exeInfoSpec :: Spec
 exeInfoSpec = describe "parseExeInfo" $ do
   it "should parse all valid values successfully" $ do
-    forAllValid $ \ei -> ei == parseExeInfo (eiResultBud ei)
+    forAllValid $ \ei -> ei == parseExeInfo (eiTarget ei)
 
 
 genOthers :: Gen [(Text, Word16)]

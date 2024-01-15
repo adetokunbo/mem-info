@@ -153,7 +153,7 @@ monitorRamOf pid = do
     Just bud -> do
       let gap = 10 :: Int -- print every 10 sec
           handleNext (Left _) = putStrLn "the process has stopped"
-              handleNext (Right ((mu,  _), updated)) = do
+          handleNext (Right ((mu,  _), updated)) = do
             putStrLn $ show mu
             go updated
           go x = unfoldMemUsageAfter gap x >>= handleNext

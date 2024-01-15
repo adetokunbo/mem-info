@@ -245,7 +245,7 @@ readForOnePid pid = do
   nameFor pid >>= \case
     Left err -> pure $ Left $ PidLost err
     Right _ ->
-      mkBud' (NE.singleton pid) >>= \case
+      mkBud' (pid :| []) >>= \case
         Left err -> pure $ Left err
         Right bud -> readMemUsage bud <&> andFromUsage
 

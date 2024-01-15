@@ -52,7 +52,7 @@ fickleSharing k = k >= (2, 6, 1) && k <= (2, 6, 9)
 
 
 -- | Determines the version of the Linux kernel on the current system.
-readKernelVersion :: IO (Either Text KernelVersion)
+readKernelVersion :: IO (Maybe KernelVersion)
 readKernelVersion = parseKernelVersion <$> Text.readFile kernelVersionPath
 
 
@@ -61,12 +61,12 @@ kernelVersionPath = "/proc/sys/kernel/osrelease"
 
 
 -- | Parses @Text@ into a @'KernelVersion'@
-parseKernelVersion :: Text -> Either Text KernelVersion
+parseKernelVersion :: Text -> Maybe KernelVersion
 parseKernelVersion =
-  let unrecognized = Left "unrecognized kernel version"
-      dec' (Right (x, extra)) | Text.null extra = Right x
+  let unrecognized = Nothing
+      dec' (Right (x, extra)) | Text.null extra = Just x
       dec' _ = unrecognized
-      dec1st' (Right (x, _)) = Right x
+      dec1st' (Right (x, _)) = Just x
       dec1st' _ = unrecognized
 
       dec = dec' . Text.decimal
@@ -177,8 +177,11 @@ checkForFlaws bud = do
   pure $ bud {rbRamFlaws, rbSwapFlaws}
 
 
--- | Construct a 'ReportBud' for the specified @ProcessIDs@
-mkReportBud :: NonEmpty ProcessID -> IO (Either Text ReportBud)
+{- | Construct a 'ReportBud' for the specified @ProcessIDs@
+
+@Nothing@ is returned if the kernel version cannot be determined
+-}
+mkReportBud :: NonEmpty ProcessID -> IO (Maybe ReportBud)
 mkReportBud rbPids = do
   let firstPid = NE.head rbPids
       smapsPath = pidPath "smaps" firstPid
@@ -188,9 +191,9 @@ mkReportBud rbPids = do
   rbHasSmaps <- doesFileExist smapsPath
   (rbHasPss, rbHasSwapPss) <- memtypes <$> readUtf8Text smapsPath
   readKernelVersion >>= \case
-    Left err -> pure $ Left err
-    Right rbKernel ->
-      fmap Right $
+    Nothing -> pure Nothing
+    Just rbKernel ->
+      fmap Just $
         checkForFlaws $
           ReportBud
             { rbPids

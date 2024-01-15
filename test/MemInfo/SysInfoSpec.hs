@@ -29,7 +29,7 @@ prop_roundtripKernelVersion :: Property
 prop_roundtripKernelVersion =
   within 5000000 $
     forAll genOsRelease $
-      \(version, txt) -> Right version == parseKernelVersion txt
+      \(version, txt) -> Just version == parseKernelVersion txt
 
 
 genOsRelease :: Gen (KernelVersion, Text)

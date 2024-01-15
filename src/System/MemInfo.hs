@@ -21,6 +21,7 @@ module System.MemInfo (
 
   -- * read @MemUsage@ directly
   LostPid (..),
+  NotRun (..),
   readMemUsage,
   readMemUsage',
   readForOnePid,
@@ -227,8 +228,8 @@ readForOnePid pid = do
     Left err -> pure $ Left err
     Right _ ->
       mkReportBud (pid :| []) >>= \case
-        Left _ -> pure noProc
-        Right bud -> readMemUsage bud <&> orNoProc
+        Nothing -> pure noProc
+        Just bud -> readMemUsage bud <&> orNoProc
 
 
 {- | Like @'readMemUsage'@ but uses the default choices for indexing
@@ -282,16 +283,16 @@ reportFlaws bud showSwap onlyTotal = do
 
 
 verify :: Choices -> IO ReportBud
-verify cs = case choicePidsToShow cs of
-  Just rbPids -> do
-    -- halt if any specified pid cannot be accessed
-    checkAllExist rbPids
-    mkReportBud rbPids >>= either haltErr pure
-  Nothing -> do
-    -- if choicePidsToShow is Nothing, must be running as root
-    isRoot' <- isRoot
-    unless isRoot' $ haltErr "run as root when no pids are specified using -p"
-    allKnownProcs >>= mkReportBud >>= either haltErr pure
+verify cs = verify' (choicePidsToShow cs) >>= either (haltErr . fmtNotRun) pure
+
+
+verify' :: Maybe (NonEmpty ProcessID) -> IO (Either NotRun ReportBud)
+verify' pidsMb = do
+  let mkBud' xs = mkReportBud xs <&> maybe (Left OddKernel) Right
+      thenMkBud = either (pure . Left) mkBud'
+  case pidsMb of
+    Just pids -> checkAllExist pids >>= thenMkBud
+    Nothing -> whenRoot $ allKnownProcs >>= thenMkBud
 
 
 procRoot :: String
@@ -302,8 +303,11 @@ pidPath :: String -> ProcessID -> FilePath
 pidPath base pid = "" +| procRoot |++| toInteger pid |+ "/" +| base |+ ""
 
 
-isRoot :: IO Bool
-isRoot = (== 0) <$> getEffectiveUserID
+whenRoot :: IO (Either NotRun a) -> IO (Either NotRun a)
+whenRoot action = do
+  -- if choicePidsToShow is Nothing, must be running as root
+  isRoot' <- (== 0) <$> getEffectiveUserID
+  if isRoot' then action else pure $ Left NeedsRoot
 
 
 {- |  pidExists returns false for any ProcessID that does not exist or cannot
@@ -368,6 +372,24 @@ parentNameIfMatched pid candidate = do
         _ -> pure $ Right $ siName si
 
 
+-- | Represents errors that prevent a report from being generated
+data NotRun
+  = PidLost LostPid
+  | MissingPids (NonEmpty ProcessID)
+  | NeedsRoot
+  | OddKernel
+  | NoRecords
+  deriving (Eq, Show)
+
+
+fmtNotRun :: NotRun -> Text
+fmtNotRun NeedsRoot = "run as root when no pids are specified using -p"
+fmtNotRun (PidLost x) = fmtLostPid x
+fmtNotRun OddKernel = "unrecognized kernel version"
+fmtNotRun (MissingPids pids) = "no records available for: " +| listF (toInteger <$> pids) |+ ""
+fmtNotRun NoRecords = "could not find any process records"
+
+
 {- | Represents reasons a specified @pid =`ProcessID`@ may be not have memory
 records.
 -}
@@ -427,20 +449,20 @@ nonExisting :: NonEmpty ProcessID -> IO [ProcessID]
 nonExisting = filterM (fmap not . pidExeExists) . NE.toList
 
 
-checkAllExist :: NonEmpty ProcessID -> IO ()
+checkAllExist :: NonEmpty ProcessID -> IO (Either NotRun (NonEmpty ProcessID))
 checkAllExist pids =
   nonExisting pids >>= \case
-    [] -> pure ()
-    xs -> haltErr $ "no records available for: " +| listF (toInteger <$> xs) |+ ""
+    [] -> pure $ Right pids
+    x : xs -> pure $ Left $ MissingPids $ x :| xs
 
 
-allKnownProcs :: IO (NonEmpty ProcessID)
+allKnownProcs :: IO (Either NotRun (NonEmpty ProcessID))
 allKnownProcs =
   let readNaturals = fmap (mapMaybe readMaybe)
-      orNoPids = flip maybe pure $ haltErr "could not find any process records"
+      orNoPids = maybe (Left NoRecords) Right
    in readNaturals (listDirectory procRoot)
         >>= filterM pidExeExists
-        >>= orNoPids . nonEmpty
+        >>= pure . orNoPids . nonEmpty
 
 
 baseName :: Text -> Text

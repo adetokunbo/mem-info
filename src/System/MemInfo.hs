@@ -41,8 +41,14 @@ module System.MemInfo (
   dropId,
   withPid,
 
+  -- * print @MemUsage@
+  printUsage,
+  printUsage',
+
   -- * re-export
   mkReportBud,
+  ProcessID,
+  AsCmdName (..),
 ) where
 
 import Data.Bifunctor (Bifunctor (..))
@@ -123,6 +129,16 @@ printMemUsages bud showSwap onlyTotal totals = do
   mapM_ print' $ Map.toList totals
   when overallIsAccurate $ Text.putStrLn $ fmtOverall showSwap overall
   reportFlaws bud showSwap onlyTotal
+
+
+-- | Print the program name and memory usage, optionally hiding the swap value.
+printUsage' :: AsCmdName a => (a, MemUsage) -> Bool -> IO ()
+printUsage' (name, mu) showSwap = Text.putStrLn $ fmtMemUsage showSwap name mu
+
+
+-- | Like printUsage, but alway shows the swap value
+printUsage :: AsCmdName a => (a, MemUsage) -> IO ()
+printUsage = flip printUsage' True
 
 
 onlyPrintTotal :: ReportBud -> Bool -> Bool -> Map k MemUsage -> IO ()

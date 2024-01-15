@@ -109,6 +109,61 @@ giving output like this:
 
 ```
 
+## Haskell Usage
+
+The functions exported by `System.MemInfo` can be used to obtain memory usage
+of programs from haskell code:
+
+#### Example: print the program name and memory usage of single process
+
+```haskell
+import System.MemInfo (
+  readForOnePid,
+  printUsage,
+  ProcessID
+)
+
+showUsageOf :: ProcessID -> IO ()
+showUsageOf pid = do
+  orError <- readForOnePid pid
+  case orError of
+    Left err -> putStrLn $ show err
+    Right usage -> printUsage usage
+
+main :: IO ()
+main = showUsageOf 96334 -- replace with your own process ID
+```
+
+#### Example: monitor the memory of a single process continuously
+
+```haskell
+import System.MemInfo (
+  mkReportBud,
+  printUsage,
+  unfoldMemUsageAfter,
+  ProcessID
+)
+
+-- | Use 'unfoldMemUsageAfter' to periodically print out the memory usage
+monitorRamOf :: ProcessID -> IO ()
+monitorRamOf pid = do
+  budMb <- mkReportBud $ NE.singleton pid
+  case budMb of
+    Nothing -> putStrLn $ "Failed to read the system info"
+    Just bud -> do
+      let gap = 10 :: Int -- print every 10 sec
+          handleNext (Left _) = putStrLn "the process has stopped"
+              handleNext (Right ((mu,  _), updated)) = do
+            putStrLn $ show mu
+            go updated
+          go x = unfoldMemUsageAfter gap x >>= handleNext
+      go bud
+
+main :: IO ()
+main = monitorRamOf 96334 -- replace with your own process ID
+```
+
+
 [hackage-deps-badge]: <https://img.shields.io/hackage-deps/v/mem-info.svg>
 [hackage-deps]:       <http://packdeps.haskellers.com/feed?needle=mem-info>
 [hackage-badge]:      <https://img.shields.io/hackage/v/mem-info.svg>

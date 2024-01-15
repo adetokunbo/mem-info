@@ -15,6 +15,9 @@ description:
 
     * a library to enable core memory tracking on linux in haskell programs
 
+  See the [README](https://github.com/adetokunbo/mem-info/blob/master/README.md)
+  for further details
+
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Tim Emiola

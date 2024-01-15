@@ -219,17 +219,19 @@ unfoldMemUsage namer mkCmd bud = do
   nextState <$> foldlEitherM' (readNameAndStats namer bud) pids
 
 
--- | Load the @'MemUsage'@ of a program specified by a @ProcessID@
-readForOnePid :: ProcessID -> IO (Either LostPid (ProcName, MemUsage))
+-- | Load the @'MemUsage'@ of a program specified by its @ProcessID@
+readForOnePid :: ProcessID -> IO (Either NotRun (ProcName, MemUsage))
 readForOnePid pid = do
-  let noProc = Left $ NoProc pid
-      orNoProc = either Left $ maybe noProc Right . Map.lookupMin
+  let mkBud' xs = mkReportBud xs <&> maybe (Left OddKernel) Right
+      noProc = NoProc pid
+      fromMemUsage x = maybe (Left $ PidLost noProc) Right (Map.lookupMin x)
+      andFromUsage = either (Left . PidLost) fromMemUsage
   nameFor pid >>= \case
-    Left err -> pure $ Left err
+    Left err -> pure $ Left $ PidLost err
     Right _ ->
-      mkReportBud (pid :| []) >>= \case
-        Nothing -> pure noProc
-        Just bud -> readMemUsage bud <&> orNoProc
+      mkBud' (NE.singleton pid) >>= \case
+        Left err -> pure $ Left err
+        Right bud -> readMemUsage bud <&> andFromUsage
 
 
 {- | Like @'readMemUsage'@ but uses the default choices for indexing

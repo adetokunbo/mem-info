@@ -9,11 +9,13 @@ SPDX-License-Identifier: BSD3
 -}
 module MemInfo.ProcSpec (spec) where
 
+import Data.Hashable (hash)
+import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word (Word16)
 import Fmt (blockMapF, build, fmt, (+|), (|+))
 import MemInfo.OrphanInstances ()
-import System.MemInfo.Prelude
+import Numeric.Natural (Natural)
 import System.MemInfo.Proc
 import Test.Hspec
 import Test.QuickCheck

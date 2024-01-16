@@ -8,10 +8,11 @@ SPDX-License-Identifier: BSD3
 -}
 module MemInfo.PrintSpec (spec) where
 
+import Data.Text (Text)
 import qualified Data.Text as Text
-import System.MemInfo.Prelude
 import System.MemInfo.Print (fmtAsHeader, fmtMemUsage, fmtOverall)
 import System.MemInfo.Proc (MemUsage (..))
+import System.Posix.Types (ProcessID)
 import Test.Hspec
 
 

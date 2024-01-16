@@ -10,10 +10,10 @@ SPDX-License-Identifier: BSD3
 module MemInfo.SysInfoSpec (spec) where
 
 import Data.GenValidity (GenValid (..))
+import Data.Text (Text)
 import Data.Word (Word8)
 import Fmt (build, fmt, (+|), (|+))
 import MemInfo.OrphanInstances ()
-import System.MemInfo.Prelude
 import System.MemInfo.SysInfo (KernelVersion, parseKernelVersion)
 import Test.Hspec
 import Test.QuickCheck

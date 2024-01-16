@@ -36,10 +36,11 @@ library
   exposed-modules:
     System.MemInfo
     System.MemInfo.Choices
-    System.MemInfo.Prelude
     System.MemInfo.Print
     System.MemInfo.Proc
     System.MemInfo.SysInfo
+  other-modules:
+    System.MemInfo.Prelude
 
   hs-source-dirs:   src
   build-depends:
@@ -78,10 +79,12 @@ test-suite test
     , genvalidity
     , genvalidity-hspec
     , genvalidity-text
+    , hashable
     , mem-info
     , hspec              >=2.1 && <2.11
     , QuickCheck
     , text
+    , unix
 
 -- printmem is the printmem command
 executable printmem

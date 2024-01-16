@@ -19,8 +19,8 @@ module MemInfo.OrphanInstances where
 
 import Data.GenValidity (GenValid (..))
 import Data.GenValidity.Text ()
-import System.MemInfo.Prelude
 import System.MemInfo.Proc (ExeInfo (..), StatusInfo)
+import System.Posix.Types (CPid (..), ProcessID)
 import Test.Validity (Validity)
 
 

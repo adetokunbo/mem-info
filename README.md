@@ -176,10 +176,10 @@ main :: IO ()
 main = showUsageOf 96334 -- replace with your own process ID
 ```
 
-#### Example: periodically check the memory of a processes
+#### Example: periodically check the memory of some processes
 
 ```haskell
-import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty (NonEmpty, (:|))
 import System.MemInfo (
   mkReportBud,
   printUsage,
@@ -187,7 +187,7 @@ import System.MemInfo (
   ProcessID
 )
 
--- | Use 'unfoldMemUsageAfter' to periodically read the memory usage
+-- | Use 'unfoldMemUsageAfter' to periodically read memory usage
 monitorRamOf :: NonEmpty ProcessID -> IO ()
 monitorRamOf pids = do
   budMb <- mkReportBud pids
@@ -203,7 +203,7 @@ monitorRamOf pids = do
       go bud
 
 main :: IO ()
-main = monitorRamOf 96334 -- replace with your own process ID
+main = monitorRamOf $ 96334 :| [96335]-- replace with your own process IDs
 ```
 
 

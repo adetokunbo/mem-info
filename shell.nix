@@ -1,5 +1,5 @@
 let
-  project = import ./default.nix;
+  project = import ./default.nix {};
 in
   project.shellFor {
     # Builds a Hoogle documentation index of all dependencies,

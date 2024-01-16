@@ -213,6 +213,6 @@ main = monitorRamOf 96334 -- replace with your own process ID
 [hackage]:            <https://hackage.haskell.org/package/mem-info>
 [ps_mem]:             <https://github.com/pixelb/ps_mem/blob/master/README.md>
 [pgrep]:              <https://www.man7.org/linux/man-pages/man1/pgrep.1.html>
-[releases]:           <https://github.com/adetokunbo/mem-info/releases/download/v0.1.0.0pre1/printmem>
+[releases]:           <https://github.com/adetokunbo/mem-info/releases>
 [nix]:                <https://nixos.org/manual/nix/stable/installation/installation>
 [cabal]:              <https://cabal.readthedocs.io/en/stable/index.html>

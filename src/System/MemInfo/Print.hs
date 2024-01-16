@@ -7,13 +7,10 @@ Copyright   : (c) 2022 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
-This module contains functions for formatting parts of the memory report
+This module provides functions that format the output of the @printmem@ command
 -}
 module System.MemInfo.Print (
-  -- * classes
   AsCmdName (..),
-
-  -- * functions
   fmtAsHeader,
   fmtOverall,
   fmtMemUsage,

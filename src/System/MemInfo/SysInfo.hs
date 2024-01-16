@@ -8,26 +8,32 @@ Copyright   : (c) 2022 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
-This module provides information about the system on which the memory is being
-measured.
+This module provides data types that
 
-@'readKernelVersion'@ determines the system's linux @'KernelVersion'@
+- define memory reports (@'ReportBud'@) and
+
+- provide info about the system where the report will run (@'KernelVersion'@,
+@'SwapFlaw'@ and @'RamFlaw'@).
+
+along with functions that use these types.
 -}
 module System.MemInfo.SysInfo (
-  -- * data types
-  KernelVersion,
+  -- * define reports
   ReportBud (..),
+  mkReportBud,
+
+  -- * indicate calculation flaws
   RamFlaw (..),
   SwapFlaw (..),
-
-  -- * functions
-  mkReportBud,
   checkForFlaws,
   fmtRamFlaws,
   fmtSwapFlaws,
-  fickleSharing,
+
+  -- * system kernel version
+  KernelVersion,
   parseKernelVersion,
   readKernelVersion,
+  fickleSharing,
 ) where
 
 import qualified Data.List.NonEmpty as NE
@@ -177,9 +183,11 @@ checkForFlaws bud = do
   pure $ bud {rbRamFlaws, rbSwapFlaws}
 
 
-{- | Construct a 'ReportBud' for the specified @ProcessIDs@
+{- | Construct a @ReportBud@ from some @ProcessIDs@
 
-@Nothing@ is returned if the kernel version cannot be determined
+Generates values for the other fields by checking the system
+
+The result is @Nothing@ only when the @KernelVersion@ cannot be determined
 -}
 mkReportBud :: NonEmpty ProcessID -> IO (Maybe ReportBud)
 mkReportBud rbPids = do

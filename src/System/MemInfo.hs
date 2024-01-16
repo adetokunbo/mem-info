@@ -15,37 +15,37 @@ SPDX-License-Identifier: BSD3
 Implements a command that computes the memory usage of some processes
 -}
 module System.MemInfo (
-  -- * implement the system command @printmem@
+  -- * Implement @printmem@
   getChoices,
   printProcs,
 
-  -- * read @MemUsage@ directly
+  -- * Read 'MemUsage'
   LostPid (..),
   NotRun (..),
   readMemUsage,
   readMemUsage',
   readForOnePid,
 
-  -- * unfold @MemUsage@ in a stream
+  -- * Stream 'MemUsage' periodically
   unfoldMemUsageAfter',
   unfoldMemUsageAfter,
   unfoldMemUsage,
 
-  -- * determine the process/program name
+  -- * Obtain the process/program name
   nameFromExeOnly,
   nameFor,
   nameAsFullCmd,
 
-  -- * index by program name or by processID
+  -- * Index by pid or name
   ProcName,
   dropId,
   withPid,
 
-  -- * print @MemUsage@
+  -- * Print 'MemUsage'
   printUsage,
   printUsage',
 
-  -- * re-export
+  -- * Convenient re-exports
   mkReportBud,
   ProcessID,
   AsCmdName (..),

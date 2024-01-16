@@ -10,24 +10,28 @@ Copyright   : (c) 2022 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
-This module provides data types that model data from files in the @proc@
-filesystem that track memory usage metrics, and combinators for parsing and
-grouping the contents of those files.
+This module provides data types that model data from files in the @Linux proc
+filesystem@ that track memory usage, and combinators for parsing and grouping
+the contents of those files.
 -}
 module System.MemInfo.Proc (
-  -- * data types
+  -- * Add-up process memory metrics
   MemUsage (..),
-  ExeInfo (..),
-  PerProc (..),
-  StatusInfo (..),
-  BadStatus (..),
-
-  -- * functions
   amass,
+
+  -- * Parse process memory metrics
+  PerProc (..),
   parseFromSmap,
   parseFromStatm,
+
+  -- * Parse \/proc\/\<pid\>\/exe
+  ExeInfo (..),
   parseExeInfo,
+
+  -- * Parse \/proc\/<pid\>\/status
   parseStatusInfo,
+  StatusInfo (..),
+  BadStatus (..),
 ) where
 
 import qualified Data.Map as Map
@@ -58,14 +62,14 @@ instance Validity StatusInfo where
           ]
 
 
--- | Specifies why @'parseStatusInfo'@ might fail
+-- | Indicates why @'parseStatusInfo'@ failed
 data BadStatus
   = NoCmd
   | NoParent
   deriving (Eq, Show)
 
 
--- | Parses the content of  /proc/<pid>/status into a @'StatusInfo'@
+-- | Parses the content of \/proc\/\<pid\>\/status into a @'StatusInfo'@
 parseStatusInfo :: Text -> Either BadStatus StatusInfo
 parseStatusInfo content =
   let
@@ -83,7 +87,7 @@ parseStatusInfo content =
     StatusInfo <$> name <*> ppId
 
 
--- | Parses the target of  /proc/<pid>/exe into a @'ExeInfo'@
+-- | Parses the target of \/proc\/\<pid\>\/exe into a @'ExeInfo'@
 parseExeInfo :: Text -> ExeInfo
 parseExeInfo x =
   let eiTarget = takeTillNull x

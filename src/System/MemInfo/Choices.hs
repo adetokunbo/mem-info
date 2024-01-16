@@ -4,16 +4,13 @@ Copyright   : (c) 2022 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
-Defines the command line flags used to control the behaviour of the core-mem
-command
+This module defines the command line flags used to control the behavior of the
+@printmem@ command
 -}
 module System.MemInfo.Choices (
-  -- * data types
   Choices (..),
   cmdInfo,
   getChoices,
-
-  -- * functions
 ) where
 
 import Options.Applicative (

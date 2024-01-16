@@ -6,16 +6,18 @@
 [![Hackage Dependencies][hackage-deps-badge]][hackage-deps]
 [![BSD3](https://img.shields.io/badge/license-BSD3-green.svg?dummy)](https://github.com/adetokunbo/mem-info/blob/master/LICENSE)
 
-A utility to accurately report the core memory usage of programs
+A utility to accurately report the core memory usage of linux programs
 
-This is a clone of [ps_mem], the original command implemented in python, whose
-functionality is also available for use as library code in haskell programs.
+This is a clone of [ps_mem], originally implemented in python. This
+re-implementation allows its behaviour to be used as library code in haskell
+programs.
 
-It provides an executable command `printmem`, that mimics `ps_mem`.
+It provides an executable command `printmem`, that mimics `ps_mem`, and
+`mem-info`, a haskell library package.
 
 ## Rationale
 
-It determines how much RAM (and optionally Swap) is used per *program*, not per
+`printmem` determines how much RAM (and optionally Swap) is used per *program*, not per
 process, i.e, all the `httpd`, `postgres` or `firefox` processes are grouped
 together.
 
@@ -37,6 +39,25 @@ method available.
 
 When `(-d|--discriminate-by-pid)` option is specified, it switches to the more
 common per-process breakdown of the RAM measurements.
+
+## Installation
+
+You can download a pre-built binary from [releases].  It is a statically-linked executable that should run on most recent Linux distributions.
+
+Download it, place it in a directory on your path and give it executable permissions
+
+E.g, the following commands should suffice
+
+```bash
+$ # choose a directory on your PATH; this example uses ${HOME}/.local/bin
+$ my_local_bin=${HOME}/.local/bin/printmem
+$ release_url="https://github.com/adetokunbo/mem-info/releases/download/v0.1.0.0pre1/printmem"
+$ # download it
+$ wget -O $my_local_bin $release_url
+$ # make it executable
+$ chmod u+x $my_local_bin
+```
+
 
 ## Usage
 
@@ -109,12 +130,33 @@ giving output like this:
 
 ```
 
-## Haskell Usage
+## Building from source
+
+Check out this repository, and then build using either [nix] or [cabal]
+
+### Using cabal
+
+You can build the `mem-info` haskell library and `printmem` executable by running
+
+```
+cabal build
+```
+
+### Using nix
+
+You can build the `printmem` executable by running
+
+```
+$ nix-build static.nix
+```
+
+
+## System.MemInfo, a haskell library
 
 The functions exported by `System.MemInfo` can be used to obtain memory usage
-of programs from haskell code:
+within haskell programs.
 
-#### Example: print the program name and memory usage of single process
+#### Example: print the program name and memory usage of a single process
 
 ```haskell
 import System.MemInfo (
@@ -134,9 +176,10 @@ main :: IO ()
 main = showUsageOf 96334 -- replace with your own process ID
 ```
 
-#### Example: monitor the memory of a single process continuously
+#### Example: periodically check the memory of a processes
 
 ```haskell
+import Data.List.NonEmpty (NonEmpty)
 import System.MemInfo (
   mkReportBud,
   printUsage,
@@ -144,10 +187,10 @@ import System.MemInfo (
   ProcessID
 )
 
--- | Use 'unfoldMemUsageAfter' to periodically print out the memory usage
-monitorRamOf :: ProcessID -> IO ()
-monitorRamOf pid = do
-  budMb <- mkReportBud $ NE.singleton pid
+-- | Use 'unfoldMemUsageAfter' to periodically read the memory usage
+monitorRamOf :: NonEmpty ProcessID -> IO ()
+monitorRamOf pids = do
+  budMb <- mkReportBud pids
   case budMb of
     Nothing -> putStrLn $ "Failed to read the system info"
     Just bud -> do
@@ -170,3 +213,6 @@ main = monitorRamOf 96334 -- replace with your own process ID
 [hackage]:            <https://hackage.haskell.org/package/mem-info>
 [ps_mem]:             <https://github.com/pixelb/ps_mem/blob/master/README.md>
 [pgrep]:              <https://www.man7.org/linux/man-pages/man1/pgrep.1.html>
+[releases]:           <https://github.com/adetokunbo/mem-info/releases/download/v0.1.0.0pre1/printmem>
+[nix]:                <https://nixos.org/manual/nix/stable/installation/installation>
+[cabal]:              <https://cabal.readthedocs.io/en/stable/index.html>

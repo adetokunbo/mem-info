@@ -51,7 +51,7 @@ E.g, the following commands should suffice
 ```bash
 $ # choose a directory on your PATH; this example uses ${HOME}/.local/bin
 $ my_local_bin=${HOME}/.local/bin/printmem
-$ release_url="https://github.com/adetokunbo/mem-info/releases/download/v0.1.0.0/printmem"
+$ release_url="https://github.com/adetokunbo/mem-info/releases/download/v0.1.0.1/printmem"
 $ # download it
 $ wget -O $my_local_bin $release_url
 $ # make it executable

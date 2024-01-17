@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               mem-info
-version:            0.1.0.0
+version:            0.1.0.1
 synopsis:           Print the core memory usage of programs
 description:
   A utility to accurately report the core memory usage of programs.

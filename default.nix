@@ -13,5 +13,5 @@ in
   compiler-nix-name = "ghc928";
 
   # Specify the hackage index state
-  index-state = "2023-07-20T00:00:00Z";
+  index-state = "2023-11-24T00:00:00Z";
 }

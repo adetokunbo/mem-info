@@ -12,7 +12,7 @@ in
       hlint = "latest"; # Selects the latest version in the hackage.nix snapshot
       haskell-language-server = "latest";
       ghcid = "latest";
-      fourmolu = "latest";
+      fourmolu = "0.14.0.0";
       cabal-fmt = "latest";
     };
     # See overlays/tools.nix for more details

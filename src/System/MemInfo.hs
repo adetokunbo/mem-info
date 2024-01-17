@@ -12,10 +12,11 @@ Copyright   : (c) 2023 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
-Implements a command that computes the memory usage of some processes
+Implements __printmem__ a command that computes the memory usage of some
+processes
 -}
 module System.MemInfo (
-  -- * Implement @printmem@
+  -- * Implement __printmem__
   getChoices,
   printProcs,
 
@@ -32,6 +33,7 @@ module System.MemInfo (
   unfoldMemUsage,
 
   -- * Obtain the process/program name
+  ProcNamer,
   nameFromExeOnly,
   nameFor,
   nameAsFullCmd,
@@ -199,7 +201,7 @@ unfoldMemUsageAfter = unfoldMemUsageAfter' nameFor dropId
 -- | Like @'unfoldMemUsage'@ but computes the @'MemUsage's@ after a delay
 unfoldMemUsageAfter' ::
   (Ord a, Integral seconds) =>
-  (ProcessID -> IO (Either LostPid ProcName)) ->
+  ProcNamer ->
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   seconds ->
   ReportBud ->
@@ -218,7 +220,7 @@ value of the @Left@).
 -}
 unfoldMemUsage ::
   (Ord a) =>
-  (ProcessID -> IO (Either LostPid ProcName)) ->
+  ProcNamer ->
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   ReportBud ->
   IO (Either [ProcessID] ((Map a MemUsage, [ProcessID]), ReportBud))
@@ -266,7 +268,7 @@ Fails if
 -}
 readMemUsage' ::
   Ord a =>
-  (ProcessID -> IO (Either LostPid ProcName)) ->
+  ProcNamer ->
   ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
   ReportBud ->
   IO (Either LostPid (Map a MemUsage))
@@ -276,7 +278,7 @@ readMemUsage' namer mkCmd bud = do
 
 
 readNameAndStats ::
-  (ProcessID -> IO (Either LostPid ProcName)) ->
+  ProcNamer ->
   ReportBud ->
   ProcessID ->
   IO (Either LostPid (ProcessID, ProcName, PerProc))
@@ -328,7 +330,7 @@ whenRoot action = do
   if isRoot' then action else pure $ Left NeedsRoot
 
 
-{- |  pidExists returns false for any ProcessID that does not exist or cannot
+{- | pidExists returns false for any ProcessID that does not exist or cannot
 be accessed
 -}
 pidExeExists :: ProcessID -> IO Bool
@@ -336,7 +338,7 @@ pidExeExists = fmap (either (const False) (const True)) . exeInfo
 
 
 -- | Obtain the @ProcName@ as the full cmd path
-nameAsFullCmd :: ProcessID -> IO (Either LostPid ProcName)
+nameAsFullCmd :: ProcNamer
 nameAsFullCmd pid = do
   let cmdlinePath = pidPath "cmdline" pid
       err = NoCmdLine pid
@@ -346,7 +348,7 @@ nameAsFullCmd pid = do
 
 
 -- | Obtain the @ProcName@ by examining the path linked by @{proc_root}/pid/exe@
-nameFromExeOnly :: ProcessID -> IO (Either LostPid ProcName)
+nameFromExeOnly :: ProcNamer
 nameFromExeOnly pid = do
   exeInfo pid >>= \case
     Right i | not $ eiDeleted i -> pure $ Right $ baseName $ eiOriginal i
@@ -369,10 +371,14 @@ nameFromExeOnly pid = do
     Left e -> pure $ Left e
 
 
+-- | Functions that obtain the process name given its @pid@
+type ProcNamer = ProcessID -> IO (Either LostPid ProcName)
+
+
 {- | Obtain the @ProcName@ by examining the path linked by @{proc_root}/pid/exe@
 or its parent's name if that is a better match
 -}
-nameFor :: ProcessID -> IO (Either LostPid ProcName)
+nameFor :: ProcNamer
 nameFor pid =
   nameFromExeOnly pid
     >>= either (pure . Left) (parentNameIfMatched pid)
@@ -408,7 +414,7 @@ fmtNotRun (MissingPids pids) = "no records available for: " +| listF (toInteger 
 fmtNotRun NoRecords = "could not find any process records"
 
 
-{- | Represents reasons a specified @pid =`ProcessID`@ may be not have memory
+{- | Represents reasons a specified @pid@ may be not have memory
 records.
 -}
 data LostPid

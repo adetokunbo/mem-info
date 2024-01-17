@@ -12,7 +12,7 @@ Copyright   : (c) 2023 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
-Implements __printmem__ a command that computes the memory usage of some
+Implements __printmem__, a command that computes the memory usage of some
 processes
 -}
 module System.MemInfo (
@@ -20,17 +20,17 @@ module System.MemInfo (
   getChoices,
   printProcs,
 
-  -- * Read 'MemUsage'
-  LostPid (..),
-  NotRun (..),
-  readMemUsage,
-  readMemUsage',
+  -- * Read /MemUsage/
   readForOnePid,
+  readMemUsage',
+  readMemUsage,
+  NotRun (..),
+  LostPid (..),
 
-  -- * Stream 'MemUsage' periodically
+  -- * Stream /MemUsage/ periodically
+  unfoldMemUsage,
   unfoldMemUsageAfter',
   unfoldMemUsageAfter,
-  unfoldMemUsage,
 
   -- * Obtain the process/program name
   ProcNamer,
@@ -40,12 +40,13 @@ module System.MemInfo (
 
   -- * Index by pid or name
   ProcName,
+  Indexer,
   dropId,
   withPid,
 
-  -- * Print 'MemUsage'
-  printUsage,
+  -- * Print /MemUsage/
   printUsage',
+  printUsage,
 
   -- * Convenient re-exports
   mkReportBud,
@@ -133,12 +134,12 @@ printMemUsages bud showSwap onlyTotal totals = do
   reportFlaws bud showSwap onlyTotal
 
 
--- | Print the program name and memory usage, optionally hiding the swap value.
+-- | Print the program name and memory usage, optionally hiding the swap size
 printUsage' :: AsCmdName a => (a, MemUsage) -> Bool -> IO ()
 printUsage' (name, mu) showSwap = Text.putStrLn $ fmtMemUsage showSwap name mu
 
 
--- | Like printUsage, but alway shows the swap value
+-- | Like @'printUsage''@, but alway shows the swap size
 printUsage :: AsCmdName a => (a, MemUsage) -> IO ()
 printUsage = flip printUsage' True
 
@@ -189,7 +190,7 @@ warnStopped pids = unless (null pids) $ do
 type ProcName = Text
 
 
--- | Like @'unfoldMemUsageAfter'@, but uses the default choices for naming and indindexing the reported programs
+-- | Like @'unfoldMemUsageAfter''@, but uses the default 'ProcName' and 'Indexer'
 unfoldMemUsageAfter ::
   (Integral seconds) =>
   seconds ->
@@ -202,7 +203,7 @@ unfoldMemUsageAfter = unfoldMemUsageAfter' nameFor dropId
 unfoldMemUsageAfter' ::
   (Ord a, Integral seconds) =>
   ProcNamer ->
-  ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
+  Indexer a ->
   seconds ->
   ReportBud ->
   IO (Either [ProcessID] ((Map a MemUsage, [ProcessID]), ReportBud))
@@ -221,7 +222,7 @@ value of the @Left@).
 unfoldMemUsage ::
   (Ord a) =>
   ProcNamer ->
-  ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
+  Indexer a ->
   ReportBud ->
   IO (Either [ProcessID] ((Map a MemUsage, [ProcessID]), ReportBud))
 unfoldMemUsage namer mkCmd bud = do
@@ -252,9 +253,7 @@ readForOnePid pid = do
         Right bud -> readMemUsage bud <&> andFromUsage
 
 
-{- | Like @'readMemUsage'@ but uses the default choices for indexing
-programs/processes
--}
+-- | Like @'readMemUsage''@ but uses the default 'ProcNamer' and 'Indexer'
 readMemUsage :: ReportBud -> IO (Either LostPid (Map ProcName MemUsage))
 readMemUsage = readMemUsage' nameFor dropId
 
@@ -263,13 +262,13 @@ readMemUsage = readMemUsage' nameFor dropId
 
 Fails if
 
-- the system does not have the expected /proc filesystem with memory records
-- any of the processes in @'ReportBud'@ are missing or inaccessible
+- the system does not have the expected /proc filesystem memory records
+- any of the processes specified by @'ReportBud'@ are missing or inaccessible
 -}
 readMemUsage' ::
   Ord a =>
   ProcNamer ->
-  ((ProcessID, ProcName, PerProc) -> (a, PerProc)) ->
+  Indexer a ->
   ReportBud ->
   IO (Either LostPid (Map a MemUsage))
 readMemUsage' namer mkCmd bud = do
@@ -347,7 +346,9 @@ nameAsFullCmd pid = do
   readUtf8Text cmdlinePath >>= (pure . orLostPid) . parseCmdline
 
 
--- | Obtain the @ProcName@ by examining the path linked by @{proc_root}/pid/exe@
+{- | Obtain the @ProcName@ by examining the path linked by
+__{proc_root}\/pid\/exe__
+-}
 nameFromExeOnly :: ProcNamer
 nameFromExeOnly pid = do
   exeInfo pid >>= \case
@@ -371,12 +372,12 @@ nameFromExeOnly pid = do
     Left e -> pure $ Left e
 
 
--- | Functions that obtain the process name given its @pid@
+-- | Functions that obtain a process name given its @pid@
 type ProcNamer = ProcessID -> IO (Either LostPid ProcName)
 
 
-{- | Obtain the @ProcName@ by examining the path linked by @{proc_root}/pid/exe@
-or its parent's name if that is a better match
+{- | Obtain the @ProcName@ by examining the path linked by
+__{proc_root}\/pid\/exe__ or its parent's name if that is a better match
 -}
 nameFor :: ProcNamer
 nameFor pid =
@@ -414,7 +415,7 @@ fmtNotRun (MissingPids pids) = "no records available for: " +| listF (toInteger 
 fmtNotRun NoRecords = "could not find any process records"
 
 
-{- | Represents reasons a specified @pid@ may be not have memory
+{- | Represents reasons a specified @pid@ may not have memory
 records.
 -}
 data LostPid
@@ -568,11 +569,15 @@ errStrLn errOrWarn txt = do
   Text.hPutStrLn stderr $ prefix <> txt
 
 
+-- | Functions that generate the report index
+type Indexer index = (ProcessID, ProcName, PerProc) -> (index, PerProc)
+
+
 {- | Index a @'PerProc'@ using the program name and process ID.
 
-All @PerProc's@ are distinct with the when added to the @MemUsage@
+Each @PerProc@ remains distinct when added to a @MemUsage@
 -}
-withPid :: (ProcessID, ProcName, PerProc) -> ((ProcessID, ProcName), PerProc)
+withPid :: Indexer (ProcessID, ProcName)
 withPid (pid, name, pp) = ((pid, name), pp)
 
 
@@ -580,5 +585,5 @@ withPid (pid, name, pp) = ((pid, name), pp)
 
 @PerProc's@ with the same @ProcName@ will be merged when added to a @MemUsage@
 -}
-dropId :: (ProcessID, ProcName, PerProc) -> (ProcName, PerProc)
+dropId :: Indexer ProcName
 dropId (_pid, name, pp) = (name, pp)

@@ -5,7 +5,7 @@ Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
 This module defines the command line flags used to control the behavior of the
-@printmem@ command
+__printmem__ command
 -}
 module System.MemInfo.Choices (
   Choices (..),
@@ -34,12 +34,12 @@ import Options.Applicative.NonEmpty (some1)
 import System.MemInfo.Prelude
 
 
--- | Parse the command arguments.
+-- | Parses the command line arguments.
 getChoices :: IO Choices
 getChoices = execParser cmdInfo
 
 
--- | Represents the execution choices extracted from the comamnd line
+-- | Represents the user-specified choices extracted from the command line
 data Choices = Choices
   { choiceSplitArgs :: !Bool
   , choiceOnlyTotal :: !Bool
@@ -51,7 +51,7 @@ data Choices = Choices
   deriving (Eq, Show)
 
 
--- | Specifies a command line from which will provide 'Choices'
+-- | Specifies a command line that when parsed will provide 'Choices'
 cmdInfo :: ParserInfo Choices
 cmdInfo = info (helper <*> parseChoices) mempty
 

@@ -10,12 +10,12 @@ Copyright   : (c) 2022 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
-This module provides data types that model data from files in the @Linux proc
-filesystem@ that track memory usage, and combinators for parsing and grouping
-the contents of those files.
+This module provides types that model data from files in the @Linux proc
+filesystem@ that track memory usage, combinators for parsing the files contents,
+and for grouping the results.
 -}
 module System.MemInfo.Proc (
-  -- * Add-up process memory metrics
+  -- * Combine process memory metrics
   MemUsage (..),
   amass,
 
@@ -102,14 +102,14 @@ delEnd :: Text
 delEnd = " (deleted)"
 
 
--- | Represents the information about a process obtained from /proc/<pid>/exe
+-- | Represents the information about a process obtained from \/proc\/\<pid\>\/exe
 data ExeInfo = ExeInfo
   { eiTarget :: !Text
-  -- ^ the path that the link /proc/<pid>/exe resolves to
+  -- ^ the path that the link \/proc\/\<pid\>\/exe resolves to
   , eiOriginal :: !Text
-  -- ^ a sanitized form of eiTarget; it removes the (deleted) suffix
+  -- ^ a sanitized form of eiTarget; it removes the / (deleted)/ suffix
   , eiDeleted :: !Bool
-  -- ^ does eiTarget end with (deleted)?
+  -- ^ does eiTarget end with /(deleted)/?
   }
   deriving (Eq, Show, Generic)
 
@@ -119,7 +119,7 @@ instance Validity ExeInfo where
   validate ei = check (eiOriginal ei == eiTarget ei) "target is not deleted"
 
 
--- | Combine @'PerProc'@ metrics grouped by command name
+-- | Combine @'PerProc'@, grouping them by the effective program name
 amass ::
   Ord a =>
   Bool ->
@@ -224,7 +224,7 @@ pageSizeKiB :: Int
 pageSizeKiB = 4
 
 
--- | Parse @'PerProc'@ from the contents of @/proc/<pid>/statm@
+-- | Parse @'PerProc'@ from the contents of \/proc\/\<pid\>\/statm
 parseFromStatm :: KernelVersion -> Text -> Maybe PerProc
 parseFromStatm version content =
   let
@@ -256,7 +256,7 @@ ppZero =
     }
 
 
--- | Parse @'PerProc'@ from the contents of @/proc/<pid>/smap@
+-- | Parse @'PerProc'@ from the contents of \/proc\/\<pid\>\/smap
 parseFromSmap :: Text -> PerProc
 parseFromSmap = fromSmap . parseSmapStats
 
@@ -280,7 +280,7 @@ fromSmap ss =
         }
 
 
--- | Represents per-process data read from  @PROC_ROOT@/smaps
+-- | Represents per-process data read from \/proc\/\<pid\>\/smap
 data SmapStats = SmapStats
   { ssPss :: !Int
   , ssPssCount :: !Int

@@ -10,9 +10,9 @@ SPDX-License-Identifier: BSD3
 
 This module provides data types that
 
-- define memory reports (@'ReportBud'@) and
+- define memory reports (cf @'ReportBud'@) and
 
-- provide info about the system where the report will run (@'KernelVersion'@,
+- provide info about the system where the report will run (cf @'KernelVersion'@,
 @'SwapFlaw'@ and @'RamFlaw'@).
 
 along with functions that use these types.
@@ -185,7 +185,7 @@ checkForFlaws bud = do
 
 {- | Construct a @ReportBud@ from some @ProcessIDs@
 
-Generates values for the other fields by checking the system
+Generates values for the other fields by inspecting the system
 
 The result is @Nothing@ only when the @KernelVersion@ cannot be determined
 -}

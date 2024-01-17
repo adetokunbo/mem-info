@@ -7,7 +7,7 @@ Copyright   : (c) 2022 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
-This module provides functions that format the output of the @printmem@ command
+This module provides functions that format the output of the __printmem__ command
 -}
 module System.MemInfo.Print (
   AsCmdName (..),
@@ -121,9 +121,13 @@ cmdWithCount :: AsCmdName a => a -> Int -> Text
 cmdWithCount cmd count = "" +| asCmdName cmd |+ " (" +| count |+ ")"
 
 
--- | Represents a label that is as the command name in the report output
+{- | Identifies a type as a label to use to index programs in the report
+output
+
+The label is also used to group related processes under a single program
+-}
 class AsCmdName a where
-  -- Convert the label to text for output
+  -- Convert the label to text to print in the report output
   asCmdName :: a -> Text
 
 

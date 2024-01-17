@@ -20,7 +20,7 @@ module System.MemInfo.Proc (
   amass,
 
   -- * Parse process memory metrics
-  PerProc (..),
+  ProcUsage (..),
   parseFromSmap,
   parseFromStatm,
 
@@ -119,11 +119,11 @@ instance Validity ExeInfo where
   validate ei = check (eiOriginal ei == eiTarget ei) "target is not deleted"
 
 
--- | Combine @'PerProc'@, grouping them by the effective program name
+-- | Combine @'ProcUsage'@, grouping them by the effective program name
 amass ::
   Ord a =>
   Bool ->
-  [(a, PerProc)] ->
+  [(a, ProcUsage)] ->
   Map a MemUsage
 amass hasPss = Map.map (fromSubTotal hasPss) . foldl' (incrSubTotals hasPss) mempty
 
@@ -161,19 +161,19 @@ incrSubTotals ::
   Ord a =>
   Bool ->
   Map a SubTotal ->
-  (a, PerProc) ->
+  (a, ProcUsage) ->
   Map a SubTotal
 incrSubTotals hasPss acc (cmd, mem) =
   let combinePrivate next prev | hasPss = next + prev
       combinePrivate next prev = max next prev
       nextSt =
         SubTotal
-          { stShared = ppShared mem
-          , stSharedHuge = ppSharedHuge mem
+          { stShared = puShared mem
+          , stSharedHuge = puSharedHuge mem
           , stCount = 1
-          , stPrivate = ppPrivate mem
-          , stSwap = ppSwap mem
-          , stMemIds = Set.singleton $ ppMemId mem
+          , stPrivate = puPrivate mem
+          , stSwap = puSwap mem
+          , stMemIds = Set.singleton $ puMemId mem
           }
       update' next prev =
         prev
@@ -209,12 +209,12 @@ threadsNotProcs cs = Set.size (stMemIds cs) == 1 && stCount cs > 1
 
 
 -- | Represents the memory metrics for a single process
-data PerProc = PerProc
-  { ppPrivate :: !Int
-  , ppShared :: !Int
-  , ppSharedHuge :: !Int
-  , ppSwap :: !Int
-  , ppMemId :: !Int
+data ProcUsage = ProcUsage
+  { puPrivate :: !Int
+  , puShared :: !Int
+  , puSharedHuge :: !Int
+  , puSwap :: !Int
+  , puMemId :: !Int
   }
   deriving (Eq, Show)
 
@@ -224,20 +224,20 @@ pageSizeKiB :: Int
 pageSizeKiB = 4
 
 
--- | Parse @'PerProc'@ from the contents of \/proc\/\<pid\>\/statm
-parseFromStatm :: KernelVersion -> Text -> Maybe PerProc
+-- | Parse @'ProcUsage'@ from the contents of \/proc\/\<pid\>\/statm
+parseFromStatm :: KernelVersion -> Text -> Maybe ProcUsage
 parseFromStatm version content =
   let
     parseWord w (Just acc) = (\x -> Just (x : acc)) =<< readMaybe (Text.unpack w)
     parseWord _ Nothing = Nothing
     parseMetrics = foldr parseWord (Just mempty)
-    withMemId = ppZero {ppMemId = hash content}
+    withMemId = ppZero {puMemId = hash content}
     fromRss rss _shared
-      | fickleSharing version = withMemId {ppPrivate = rss * pageSizeKiB}
+      | fickleSharing version = withMemId {puPrivate = rss * pageSizeKiB}
     fromRss rss shared =
       withMemId
-        { ppShared = shared * pageSizeKiB
-        , ppPrivate = (rss - shared) * pageSizeKiB
+        { puShared = shared * pageSizeKiB
+        , puPrivate = (rss - shared) * pageSizeKiB
         }
     fromRss' (_size : rss : shared : _xs) = Just $ fromRss rss shared
     fromRss' _ = Nothing
@@ -245,19 +245,19 @@ parseFromStatm version content =
     parseMetrics (Text.words content) >>= fromRss'
 
 
-ppZero :: PerProc
+ppZero :: ProcUsage
 ppZero =
-  PerProc
-    { ppPrivate = 0
-    , ppShared = 0
-    , ppSharedHuge = 0
-    , ppSwap = 0
-    , ppMemId = 0
+  ProcUsage
+    { puPrivate = 0
+    , puShared = 0
+    , puSharedHuge = 0
+    , puSwap = 0
+    , puMemId = 0
     }
 
 
--- | Parse @'PerProc'@ from the contents of \/proc\/\<pid\>\/smap
-parseFromSmap :: Text -> PerProc
+-- | Parse @'ProcUsage'@ from the contents of \/proc\/\<pid\>\/smap
+parseFromSmap :: Text -> ProcUsage
 parseFromSmap = fromSmap . parseSmapStats
 
 
@@ -267,16 +267,16 @@ parseSmapStats content =
    in noMemId {ssMemId = hash content}
 
 
-fromSmap :: SmapStats -> PerProc
+fromSmap :: SmapStats -> ProcUsage
 fromSmap ss =
   let pssTweak = ssPssCount ss `div` 2 -- add ~0.5 per line to counter truncation
       pssShared = ssPss ss + pssTweak - ssPrivate ss
-   in PerProc
-        { ppSwap = if ssHasSwapPss ss then ssSwapPss ss else ssSwap ss
-        , ppShared = if ssHasPss ss then pssShared else ssShared ss
-        , ppSharedHuge = ssSharedHuge ss
-        , ppPrivate = ssPrivate ss + ssPrivateHuge ss
-        , ppMemId = ssMemId ss
+   in ProcUsage
+        { puSwap = if ssHasSwapPss ss then ssSwapPss ss else ssSwap ss
+        , puShared = if ssHasPss ss then pssShared else ssShared ss
+        , puSharedHuge = ssSharedHuge ss
+        , puPrivate = ssPrivate ss + ssPrivateHuge ss
+        , puMemId = ssMemId ss
         }
 
 

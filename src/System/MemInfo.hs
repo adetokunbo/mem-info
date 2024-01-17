@@ -79,7 +79,7 @@ import System.MemInfo.Proc (
   BadStatus (..),
   ExeInfo (..),
   MemUsage (..),
-  PerProc (..),
+  ProcUsage (..),
   StatusInfo (..),
   amass,
   parseExeInfo,
@@ -280,7 +280,7 @@ readNameAndStats ::
   ProcNamer ->
   ReportBud ->
   ProcessID ->
-  IO (Either LostPid (ProcessID, ProcName, PerProc))
+  IO (Either LostPid (ProcessID, ProcName, ProcUsage))
 readNameAndStats namer bud pid = do
   namer pid >>= \case
     Left e -> pure $ Left e
@@ -494,7 +494,7 @@ baseName :: Text -> Text
 baseName = Text.pack . takeBaseName . Text.unpack
 
 
-readMemStats :: ReportBud -> ProcessID -> IO (Either LostPid PerProc)
+readMemStats :: ReportBud -> ProcessID -> IO (Either LostPid ProcUsage)
 readMemStats bud pid = do
   statmExists <- doesFileExist $ pidPath "statm" pid
   if
@@ -570,20 +570,20 @@ errStrLn errOrWarn txt = do
 
 
 -- | Functions that generate the report index
-type Indexer index = (ProcessID, ProcName, PerProc) -> (index, PerProc)
+type Indexer index = (ProcessID, ProcName, ProcUsage) -> (index, ProcUsage)
 
 
-{- | Index a @'PerProc'@ using the program name and process ID.
+{- | Index a @'ProcUsage'@ using the program name and process ID.
 
-Each @PerProc@ remains distinct when added to a @MemUsage@
+Each @ProcUsage@ remains distinct when added to a @MemUsage@
 -}
 withPid :: Indexer (ProcessID, ProcName)
 withPid (pid, name, pp) = ((pid, name), pp)
 
 
-{- | Index a @'PerProc'@ using just the program name
+{- | Index a @'ProcUsage'@ using just the program name
 
-@PerProc's@ with the same @ProcName@ will be merged when added to a @MemUsage@
+@ProcUsage's@ with the same @ProcName@ will be merged when added to a @MemUsage@
 -}
 dropId :: Indexer ProcName
 dropId (_pid, name, pp) = (name, pp)

@@ -78,14 +78,14 @@ otherStatusFields = ["Uid", "Gid", "FDSize", "Ngid", "Threads", "Cpus_allowed"]
 fromStatmSpec :: Spec
 fromStatmSpec = describe "parseFromStatm" $ do
   describe "when using a kernel version with unknown sharing" $ do
-    it "should parse values to PerProc successfully" prop_roundtripStatmNotShared
+    it "should parse values to ProcUsage successfully" prop_roundtripStatmNotShared
   describe "when using a kernel version with known sharing" $ do
-    it "should parse values to PerProc successfully" prop_roundtripStatmShared
+    it "should parse values to ProcUsage successfully" prop_roundtripStatmShared
 
 
 fromSmapSpec :: Spec
 fromSmapSpec = describe "parseFromSmap" $ do
-  it "should parse values to PerProc successfully" prop_roundtripSmap
+  it "should parse values to ProcUsage successfully" prop_roundtripSmap
 
 
 prop_roundtripStatmShared :: Property
@@ -117,14 +117,14 @@ statmNoShared :: Word16 -> Text
 statmNoShared rss = "0 " +| toInteger rss |+ " 1 2 3 4"
 
 
-genNoSharedStatm :: Gen (PerProc, Text)
+genNoSharedStatm :: Gen (ProcUsage, Text)
 genNoSharedStatm = do
   rssKb <- genValid
   let content = statmNoShared rssKb
       pp =
         ppZero
-          { ppPrivate = fromIntegral rssKb * pageSizeKiB
-          , ppMemId = hash content
+          { puPrivate = fromIntegral rssKb * pageSizeKiB
+          , puMemId = hash content
           }
   pure (pp, content)
 
@@ -133,16 +133,16 @@ statmShared :: Word16 -> Word16 -> Text
 statmShared rss shared = "0 " +| toInteger rss |+ " " +| toInteger shared |+ " 1 2 3"
 
 
-genSharedStatm :: Gen (PerProc, Text)
+genSharedStatm :: Gen (ProcUsage, Text)
 genSharedStatm = do
   rssKb <- genValid `suchThat` (> 1) :: Gen Word16
   sharedKb <- genValid `suchThat` (< rssKb) :: Gen Word16
   let content = statmShared rssKb sharedKb
       pp =
         ppZero
-          { ppPrivate = fromIntegral (rssKb - sharedKb) * pageSizeKiB
-          , ppMemId = hash content
-          , ppShared = fromIntegral sharedKb * pageSizeKiB
+          { puPrivate = fromIntegral (rssKb - sharedKb) * pageSizeKiB
+          , puMemId = hash content
+          , puShared = fromIntegral sharedKb * pageSizeKiB
           }
   pure (pp, content)
 
@@ -151,14 +151,14 @@ pageSizeKiB :: Int
 pageSizeKiB = 4
 
 
-ppZero :: PerProc
+ppZero :: ProcUsage
 ppZero =
-  PerProc
-    { ppPrivate = 0
-    , ppShared = 0
-    , ppSharedHuge = 0
-    , ppSwap = 0
-    , ppMemId = 0
+  ProcUsage
+    { puPrivate = 0
+    , puShared = 0
+    , puSharedHuge = 0
+    , puSwap = 0
+    , puMemId = 0
     }
 
 
@@ -169,34 +169,34 @@ genSmapLine prefix = do
   pure (fromIntegral x, txt)
 
 
-genSmap :: Gen (PerProc, Text)
+genSmap :: Gen (ProcUsage, Text)
 genSmap = oneof [genBaseSmap, genWithSwapPss, genWithPss]
 
 
-genWithSwapPss :: Gen (PerProc, Text)
+genWithSwapPss :: Gen (ProcUsage, Text)
 genWithSwapPss = do
   (pp, without) <- genBaseSmap
   (swapPss, txt) <- genSmapLine "SwapPss"
   let content = without <> "\n" <> txt
-  pure (pp {ppSwap = swapPss, ppMemId = hash content}, content)
+  pure (pp {puSwap = swapPss, puMemId = hash content}, content)
 
 
-genWithPss :: Gen (PerProc, Text)
+genWithPss :: Gen (ProcUsage, Text)
 genWithPss = do
-  (pp, without, ppPrivateHuge) <- genBaseSmap'
+  (pp, without, puPrivateHuge) <- genBaseSmap'
   (pss, txt) <- genSmapLine "Pss"
   let content = without <> "\n" <> txt
-      newShared = pss - (ppPrivate pp - ppPrivateHuge)
-  pure (pp {ppShared = newShared, ppMemId = hash content}, content)
+      newShared = pss - (puPrivate pp - puPrivateHuge)
+  pure (pp {puShared = newShared, puMemId = hash content}, content)
 
 
-genBaseSmap :: Gen (PerProc, Text)
+genBaseSmap :: Gen (ProcUsage, Text)
 genBaseSmap = do
   (pp, txt, _) <- genBaseSmap'
   pure (pp, txt)
 
 
-genBaseSmap' :: Gen (PerProc, Text, Int)
+genBaseSmap' :: Gen (ProcUsage, Text, Int)
 genBaseSmap' = do
   (clean, cleanTxt) <- genSmapLine "Private_Clean"
   (dirty, dirtyTxt) <- genSmapLine "Private_Dirty"
@@ -207,11 +207,11 @@ genBaseSmap' = do
   (swap, swapTxt) <- genSmapLine "Swap"
   let pp =
         ppZero
-          { ppPrivate = clean + dirty + privateHuge
-          , ppMemId = hash content
-          , ppSwap = swap
-          , ppSharedHuge = sharedHuge
-          , ppShared = sharedClean + sharedDirty
+          { puPrivate = clean + dirty + privateHuge
+          , puMemId = hash content
+          , puSwap = swap
+          , puSharedHuge = sharedHuge
+          , puShared = sharedClean + sharedDirty
           }
       content =
         Text.unlines

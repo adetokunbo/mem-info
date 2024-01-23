@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- |
-Module      : MemInfo.ProcSpec
+Module      : MemInfo.PrintSpec
 Copyright   : (c) 2023 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3

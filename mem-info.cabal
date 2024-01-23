@@ -66,6 +66,7 @@ test-suite test
   main-is:          Spec.hs
   hs-source-dirs:   test
   other-modules:
+    MemInfo.ChoicesSpec
     MemInfo.OrphanInstances
     MemInfo.PrintSpec
     MemInfo.ProcSpec
@@ -80,8 +81,9 @@ test-suite test
     , genvalidity-hspec
     , genvalidity-text
     , hashable
-    , mem-info
     , hspec
+    , mem-info
+    , optparse-applicative  >=0.18.1 && <0.19
     , QuickCheck
     , text
     , unix

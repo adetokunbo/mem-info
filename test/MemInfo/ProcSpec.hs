@@ -10,6 +10,7 @@ SPDX-License-Identifier: BSD3
 module MemInfo.ProcSpec (spec) where
 
 import Data.Hashable (hash)
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word (Word16)
@@ -82,6 +83,9 @@ fromStatmSpec = describe "parseFromStatm" $ do
   describe "when using a kernel version with known sharing" $ do
     it "should parse values to ProcUsage successfully" prop_roundtripStatmShared
 
+  describe "When the statm content is invalid" $ do
+    it "should not parse values to ProcUsage successfully" prop_roundtripInvalidStatm
+
 
 fromSmapSpec :: Spec
 fromSmapSpec = describe "parseFromSmap" $ do
@@ -99,6 +103,12 @@ prop_roundtripStatmNotShared :: Property
 prop_roundtripStatmNotShared =
   forAll genNoSharedStatm $
     \(pp, txt) -> Just pp == parseFromStatm badSharedKernel txt
+
+
+prop_roundtripInvalidStatm :: Property
+prop_roundtripInvalidStatm =
+  forAll genNoSharedStatm $
+    \(_, txt) -> isNothing $ parseFromStatm badSharedKernel $ invalidateStatm txt
 
 
 prop_roundtripSmap :: Property
@@ -127,6 +137,10 @@ genNoSharedStatm = do
           , puMemId = hash content
           }
   pure (pp, content)
+
+
+invalidateStatm :: Text -> Text
+invalidateStatm = Text.replace " " "-"
 
 
 statmShared :: Word16 -> Word16 -> Text

@@ -1,3 +1,8 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralisedNewtypeDeriving #-}
+
 {- |
 Module      : System.MemInfo.Choices
 Copyright   : (c) 2022 Tim Emiola
@@ -13,6 +18,7 @@ module System.MemInfo.Choices (
   getChoices,
 ) where
 
+import GHC.Generics (Generic)
 import Options.Applicative (
   Parser,
   ParserInfo,
@@ -48,7 +54,7 @@ data Choices = Choices
   , choiceWatchSecs :: !(Maybe Natural)
   , choicePidsToShow :: !(Maybe (NonEmpty ProcessID))
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 
 -- | Specifies a command line that when parsed will provide 'Choices'

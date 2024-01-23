@@ -2,6 +2,7 @@
 
 module Main where
 
+import qualified MemInfo.ChoicesSpec as Choices
 import qualified MemInfo.PrintSpec as Print
 import qualified MemInfo.ProcSpec as Proc
 import qualified MemInfo.SysInfoSpec as SysInfo
@@ -19,6 +20,7 @@ main = do
   hSetBuffering stdout NoBuffering
   hSetBuffering stderr NoBuffering
   hspec $ do
+    Choices.spec
     Proc.spec
     Print.spec
     SysInfo.spec

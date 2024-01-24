@@ -113,8 +113,8 @@ sampleTotalNoSwapMono = "   1.0 KiB +    1.0 KiB =    2.0 KiB\tby-name-cmd (3)"
 
 
 sampleTotalNoSwap :: Text
-sampleTotalNoSwap = "   1.0 KiB +    1.0 KiB =    2.0 KiB\tby-id-and-name-cmd [100] (1)"
+sampleTotalNoSwap = "   1.0 KiB +    1.0 KiB =    2.0 KiB\tby-id-and-name-cmd [100]"
 
 
 sampleTotalSwap :: Text
-sampleTotalSwap = "   1.0 KiB +    1.0 KiB =    2.0 KiB   4.0 KiB\tby-id-and-name-cmd [100] (1)"
+sampleTotalSwap = "   1.0 KiB +    1.0 KiB =    2.0 KiB   4.0 KiB\tby-id-and-name-cmd [100]"

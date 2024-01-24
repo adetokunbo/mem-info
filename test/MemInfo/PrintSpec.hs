@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {- |
@@ -72,32 +73,48 @@ sampleSwapOverall =
 
 fmtMemUsageSpec :: Spec
 fmtMemUsageSpec = describe "fmtMemUsage" $ do
-  describe "when swap is not required" $ do
-    it "does not show it" $
-      fmtMemUsage False sampleName sampleTotal `shouldBe` sampleTotalNoSwap
+  describe "when displaying by-pid" $ do
+    let usage = sampleUsage' 1
+    describe "and swap is not required" $ do
+      it "does not show it" $
+        fmtMemUsage False biName usage `shouldBe` sampleTotalNoSwap
 
-  describe "when swap is required" $ do
-    it "does not show" $
-      fmtMemUsage True sampleName sampleTotal `shouldBe` sampleTotalSwap
+    describe "when swap is required" $ do
+      it "shows it" $
+        fmtMemUsage True biName usage `shouldBe` sampleTotalSwap
+
+  describe "when displaying by-name" $ do
+    let usage = sampleUsage' 3
+    describe "and swap is not required" $ do
+      it "does not show it" $
+        fmtMemUsage False monoName usage `shouldBe` sampleTotalNoSwapMono
 
 
-sampleName :: (ProcessID, Text)
-sampleName = (100, "TestCommand")
+monoName :: Text
+monoName = "by-name-cmd"
 
 
-sampleTotal :: MemUsage
-sampleTotal =
+biName :: (ProcessID, Text)
+biName = (100, "by-id-and-name-cmd")
+
+
+sampleUsage' :: Int -> MemUsage
+sampleUsage' muCount =
   MemUsage
     { muShared = 1
     , muPrivate = 2
-    , muCount = 3
+    , muCount
     , muSwap = 4
     }
 
 
+sampleTotalNoSwapMono :: Text
+sampleTotalNoSwapMono = "   1.0 KiB +    1.0 KiB =    2.0 KiB\tby-name-cmd (3)"
+
+
 sampleTotalNoSwap :: Text
-sampleTotalNoSwap = "   1.0 KiB +    1.0 KiB =    2.0 KiB\tTestCommand [100] (3)"
+sampleTotalNoSwap = "   1.0 KiB +    1.0 KiB =    2.0 KiB\tby-id-and-name-cmd [100] (1)"
 
 
 sampleTotalSwap :: Text
-sampleTotalSwap = "   1.0 KiB +    1.0 KiB =    2.0 KiB   4.0 KiB\tTestCommand [100] (3)"
+sampleTotalSwap = "   1.0 KiB +    1.0 KiB =    2.0 KiB   4.0 KiB\tby-id-and-name-cmd [100] (1)"

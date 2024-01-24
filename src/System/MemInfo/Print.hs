@@ -10,7 +10,7 @@ SPDX-License-Identifier: BSD3
 This module provides functions that format the output of the __printmem__ command
 -}
 module System.MemInfo.Print (
-  AsCmdName (..),
+  AsCmdName (asCmdName),
   fmtAsHeader,
   fmtOverall,
   fmtMemUsage,
@@ -117,10 +117,6 @@ fmtAsHeader showSwap =
       else ram <> "\t" <> label
 
 
-cmdWithCount :: AsCmdName a => a -> Int -> Text
-cmdWithCount cmd count = "" +| asCmdName cmd |+ " (" +| count |+ ")"
-
-
 {- | Identifies a type as a label to use to index programs in the report
 output
 
@@ -131,9 +127,15 @@ class AsCmdName a where
   asCmdName :: a -> Text
 
 
+  -- Add a count of processes using that label to the label
+  cmdWithCount :: a -> Int -> Text
+
+
 instance AsCmdName Text where
   asCmdName = id
+  cmdWithCount cmd count = "" +| asCmdName cmd |+ " (" +| count |+ ")"
 
 
 instance AsCmdName (ProcessID, Text) where
   asCmdName (pid, name) = "" +| name |+ " [" +| toInteger pid |+ "]"
+  cmdWithCount cmd _count = "" +| asCmdName cmd |+ ""

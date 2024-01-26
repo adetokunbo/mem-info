@@ -190,12 +190,12 @@ warnStopped pids = unless (null pids) $ do
 type ProcName = Text
 
 
--- | Like @'unfoldMemUsageAfter''@, but uses the default 'ProcName' and 'Indexer'
+-- | Like @'unfoldMemUsageAfter''@, but uses the default 'ProcNamer' and 'Indexer'
 unfoldMemUsageAfter ::
   (Integral seconds) =>
   seconds ->
   ReportBud ->
-  IO (Either [ProcessID] ((Map Text MemUsage, [ProcessID]), ReportBud))
+  IO (Either [ProcessID] ((Map ProcName MemUsage, [ProcessID]), ReportBud))
 unfoldMemUsageAfter = unfoldMemUsageAfter' nameFor dropId
 
 

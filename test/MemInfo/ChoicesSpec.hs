@@ -40,6 +40,7 @@ cmdlineOf c =
     splitArgs = if choiceSplitArgs c then ("-s" :) else id
     onlyTotal = if choiceOnlyTotal c then ("-t" :) else id
     byPid = if choiceByPid c then ("-d" :) else id
+    reversed = if choiceReversed c then ("-r" :) else id
     showSwap = if choiceShowSwap c then ("-S" :) else id
     watchSecs = maybe id (\x -> (("-w " ++ show x) :)) $ choiceWatchSecs c
     onePid x = "-p " ++ show x
@@ -47,4 +48,11 @@ cmdlineOf c =
     pidsToShow = maybe id manyPids $ choicePidsToShow c
     printOrder = maybe id (\x -> (("-b " ++ show x) :)) $ choicePrintOrder c
    in
-    printOrder $ pidsToShow $ splitArgs $ onlyTotal $ byPid $ showSwap $ watchSecs mempty
+    reversed
+      $ printOrder
+      $ pidsToShow
+      $ splitArgs
+      $ onlyTotal
+      $ byPid
+      $ showSwap
+      $ watchSecs mempty

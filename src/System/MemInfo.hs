@@ -54,12 +54,12 @@ module System.MemInfo (
   AsCmdName (..),
 ) where
 
-import Data.List(sortBy)
 import Data.Bifunctor (Bifunctor (..))
 import Data.Functor ((<&>))
+import Data.List (sortBy)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
-import Data.Ord (comparing)
+import Data.Ord (Down (..), comparing)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Fmt (
@@ -102,11 +102,12 @@ import System.Posix.User (getEffectiveUserID)
 specified by @Choices@
 -}
 printProcs :: Choices -> IO ()
-printProcs cs@Choices{choiceByPid = byPid} = do
+printProcs cs@Choices {choiceByPid = byPid} = do
   bud <- verify cs
   if byPid
     then printProcs' withPid bud cs
     else printProcs' dropId bud cs
+
 
 printProcs' :: (Ord a, AsCmdName a) => Indexer a -> ReportBud -> Choices -> IO ()
 printProcs' indexer bud cs = do
@@ -115,9 +116,10 @@ printProcs' indexer bud cs = do
         , choiceOnlyTotal = onlyTotal
         , choiceWatchSecs = watchSecsMb
         , choicePrintOrder = printOrder
+        , choiceReversed = reversed
         } = cs
-      toList = sortBy (byPrintOrder' printOrder) . Map.toList
-      printEachCmd  = printMemUsages bud showSwap onlyTotal . toList
+      toList = sortBy (byPrintOrder' reversed printOrder) . Map.toList
+      printEachCmd = printMemUsages bud showSwap onlyTotal . toList
       printTheTotal = onlyPrintTotal bud showSwap onlyTotal . toList
       showTotal = if onlyTotal then printTheTotal else printEachCmd
       namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
@@ -128,9 +130,13 @@ printProcs' indexer bud cs = do
       loopPrintMemUsages unfold bud showTotal
 
 
-printMemUsages
-  :: AsCmdName a
-  => ReportBud -> Bool -> Bool -> [(a, MemUsage)] -> IO ()
+printMemUsages ::
+  (AsCmdName a) =>
+  ReportBud ->
+  Bool ->
+  Bool ->
+  [(a, MemUsage)] ->
+  IO ()
 printMemUsages bud showSwap onlyTotal totals = do
   let overall = overallTotals $ map snd totals
       overallIsAccurate = (showSwap && rbHasSwapPss bud) || rbHasPss bud
@@ -142,16 +148,16 @@ printMemUsages bud showSwap onlyTotal totals = do
 
 
 -- | Print the program name and memory usage, optionally hiding the swap size
-printUsage' :: AsCmdName a => (a, MemUsage) -> Bool -> IO ()
+printUsage' :: (AsCmdName a) => (a, MemUsage) -> Bool -> IO ()
 printUsage' (name, mu) showSwap = Text.putStrLn $ fmtMemUsage showSwap name mu
 
 
 -- | Like @'printUsage''@, but alway shows the swap size
-printUsage :: AsCmdName a => (a, MemUsage) -> IO ()
+printUsage :: (AsCmdName a) => (a, MemUsage) -> IO ()
 printUsage = flip printUsage' True
 
 
-onlyPrintTotal :: AsCmdName k => ReportBud -> Bool -> Bool -> [(k, MemUsage)] -> IO ()
+onlyPrintTotal :: (AsCmdName k) => ReportBud -> Bool -> Bool -> [(k, MemUsage)] -> IO ()
 onlyPrintTotal bud showSwap onlyTotal totals = do
   let (private, swap) = overallTotals $ map snd totals
       printRawTotal = Text.putStrLn . fmtMemBytes
@@ -273,7 +279,7 @@ Fails if
 - any of the processes specified by @'ReportBud'@ are missing or inaccessible
 -}
 readMemUsage' ::
-  Ord a =>
+  (Ord a) =>
   ProcNamer ->
   Indexer a ->
   ReportBud ->
@@ -494,7 +500,9 @@ allKnownProcs =
       orNoPids = maybe (Left NoRecords) Right
    in readNaturals (listDirectory procRoot)
         >>= filterM pidExeExists
-        >>= pure . orNoPids . nonEmpty
+        >>= pure
+        . orNoPids
+        . nonEmpty
 
 
 baseName :: Text -> Text
@@ -505,12 +513,12 @@ readMemStats :: ReportBud -> ProcessID -> IO (Either LostPid ProcUsage)
 readMemStats bud pid = do
   statmExists <- doesFileExist $ pidPath "statm" pid
   if
-      | rbHasSmaps bud -> Right . parseFromSmap <$> readSmaps pid
-      | statmExists -> do
-          let readStatm' = readUtf8Text $ pidPath "statm" pid
-              orLostPid = maybe (Left $ BadStatm pid) Right
-          orLostPid . parseFromStatm (rbKernel bud) <$> readStatm'
-      | otherwise -> pure $ Left $ NoProc pid
+    | rbHasSmaps bud -> Right . parseFromSmap <$> readSmaps pid
+    | statmExists -> do
+        let readStatm' = readUtf8Text $ pidPath "statm" pid
+            orLostPid = maybe (Left $ BadStatm pid) Right
+        orLostPid . parseFromStatm (rbKernel bud) <$> readStatm'
+    | otherwise -> pure $ Left $ NoProc pid
 
 
 readSmaps :: ProcessID -> IO Text
@@ -520,9 +528,9 @@ readSmaps pid = do
   hasSmaps <- doesFileExist smapPath
   hasRollup <- doesFileExist rollupPath
   if
-      | hasRollup -> readUtf8Text rollupPath
-      | hasSmaps -> readUtf8Text smapPath
-      | otherwise -> pure Text.empty
+    | hasRollup -> readUtf8Text rollupPath
+    | hasSmaps -> readUtf8Text smapPath
+    | otherwise -> pure Text.empty
 
 
 overallTotals :: [MemUsage] -> (Int, Int)
@@ -597,21 +605,32 @@ dropId (_pid, name, pp) = (name, pp)
 
 
 byPrintOrder ::
+  (Ord c) =>
+  (((c, MemUsage) -> Int) -> (c, MemUsage) -> (c, MemUsage) -> Ordering) ->
   PrintOrder ->
-  (a, MemUsage) ->
-  (a, MemUsage) ->
+  (c, MemUsage) ->
+  (c, MemUsage) ->
   Ordering
-byPrintOrder Swap = comparing $ muSwap . snd
-byPrintOrder Shared = comparing $ muShared . snd
-byPrintOrder Private = comparing $ muPrivate . snd
-byPrintOrder Count = comparing $ muCount . snd
+byPrintOrder f Swap = f $ muSwap . snd
+byPrintOrder f Shared = f $ muShared . snd
+byPrintOrder f Private = f $ muPrivate . snd
+byPrintOrder f Count = f $ muCount . snd
 
 
-byPrintOrder' :: (AsCmdName a, Ord a) =>
+byPrintOrder' ::
+  (Ord a) =>
+  Bool ->
   Maybe PrintOrder ->
   (a, MemUsage) ->
   (a, MemUsage) ->
   Ordering
-byPrintOrder' mbOrder =
-  let byName = comparing fst
-   in maybe byName byPrintOrder mbOrder
+byPrintOrder' reversed mbOrder =
+  let cmpUsage = if reversed then comparing else comparing'
+      cmpName = if reversed then comparing else comparing'
+      byName = cmpName fst
+      byUsage = byPrintOrder cmpUsage
+   in maybe byName byUsage mbOrder
+
+
+comparing' :: (Ord a) => (b -> a) -> b -> b -> Ordering
+comparing' f a b = compare (Down $ f a) (Down $ f b)

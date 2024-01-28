@@ -51,6 +51,7 @@ data Choices = Choices
   , choiceOnlyTotal :: !Bool
   , choiceByPid :: !Bool
   , choiceShowSwap :: !Bool
+  , choiceReversed :: !Bool
   , choiceWatchSecs :: !(Maybe Natural)
   , choicePidsToShow :: !(Maybe (NonEmpty ProcessID))
   , choicePrintOrder :: !(Maybe PrintOrder)
@@ -70,6 +71,7 @@ parseChoices =
     <*> parseOnlyTotal
     <*> parseDiscriminateByPid
     <*> parseShowSwap
+    <*> parseReversed
     <*> optional parseWatchPeriodSecs
     <*> optional parseChoicesPidsToShow
     <*> optional parsePrintOrder
@@ -99,6 +101,14 @@ parseOnlyTotal =
     $ short 't'
     <> long "total"
     <> help "Only show the total value"
+
+
+parseReversed :: Parser Bool
+parseReversed =
+  switch
+    $ short 'r'
+    <> long "reverse"
+    <> help "Reverses the output order so that output descends on the sorting field"
 
 
 parseDiscriminateByPid :: Parser Bool

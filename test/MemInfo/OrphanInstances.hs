@@ -67,6 +67,7 @@ instance GenValid Choices where
           <*> genValid
           <*> genValid
           <*> genValid
+          <*> genValid
           <*> genPositiveMb
           <*> genPids
           <*> genValid

@@ -12,8 +12,8 @@ This is a clone of [ps_mem], originally implemented in python. This
 re-implementation allows its behaviour to be used as library code in haskell
 programs.
 
-It provides an executable command `printmem`, that mimics `ps_mem`, and
-`mem-info`, a haskell library package.
+It provides an executable command `printmem`, that mimics `ps_mem` while adding
+new features, and `mem-info`, a haskell library package.
 
 ## Rationale
 
@@ -58,13 +58,13 @@ $ # make it executable
 $ chmod u+x $my_local_bin
 ```
 
-
 ## Usage
 
 ```
 Usage: printmem [-s|--split-args] [-t|--total] [-d|--discriminate-by-pid]
-                [-S|--show_swap] [-w|--watch N]
+                [-S|--show_swap] [-r|--reverse] [-w|--watch N]
                 [(-p|--pids <pid1> [ -p pid2 ... -p pidN ])]
+                [-b|--order-by <Private | Swap | Shared | Count>]
 
 Available options:
   -h,--help                Show this help text
@@ -72,9 +72,13 @@ Available options:
   -t,--total               Only show the total value
   -d,--discriminate-by-pid Show by process rather than by program
   -S,--show_swap           Show swap information
+  -r,--reverse             Reverses the order of output, making it descending
   -w,--watch N             Measure and show memory every N seconds (N > 0)
   -p,--pids <pid1> [ -p pid2 ... -p pidN ]
                            Only show memory usage of the specified PIDs
+  -b,--order-by <Private | Swap | Shared | Count>
+                           Orders the output by ascending values of the given
+                           field
 ```
 
 ### Example output

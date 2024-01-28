@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               mem-info
-version:            0.1.0.1
+version:            0.2.0.0
 synopsis:           Print the core memory usage of programs
 description:
   A utility to accurately report the core memory usage of programs.
@@ -11,7 +11,7 @@ description:
 
   The package provides:
 
-    * an executable command `printmem` that mimics `ps_mem`
+    * an executable command `printmem` that is like `ps_mem` with extra features
 
     * a library to enable core memory tracking on linux in haskell programs
 

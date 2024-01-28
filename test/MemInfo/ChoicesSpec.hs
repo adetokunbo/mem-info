@@ -24,8 +24,8 @@ spec = describe "module System.MemInfo.Choices" $ do
 
 prop_roundtripParseChoices :: Property
 prop_roundtripParseChoices =
-  forAll genCmdLine $
-    \(choices, args) -> Just choices == getParseResult (execParserPure defaultPrefs cmdInfo args)
+  forAll genCmdLine
+    $ \(choices, args) -> Just choices == getParseResult (execParserPure defaultPrefs cmdInfo args)
 
 
 genCmdLine :: Gen (Choices, [String])
@@ -45,5 +45,6 @@ cmdlineOf c =
     onePid x = "-p " ++ show x
     manyPids xs = (map onePid (NE.toList xs) ++)
     pidsToShow = maybe id manyPids $ choicePidsToShow c
+    printOrder = maybe id (\x -> (("-b " ++ show x) :)) $ choicePrintOrder c
    in
-    pidsToShow $ splitArgs $ onlyTotal $ byPid $ showSwap $ watchSecs mempty
+    printOrder $ pidsToShow $ splitArgs $ onlyTotal $ byPid $ showSwap $ watchSecs mempty

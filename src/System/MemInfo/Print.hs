@@ -35,7 +35,7 @@ import System.MemInfo.Proc (MemUsage (..))
 {- | Generates the text of a row displaying the metrics for a single command in
 the memory report
 -}
-fmtMemUsage :: AsCmdName a => Bool -> a -> MemUsage -> Text
+fmtMemUsage :: (AsCmdName a) => Bool -> a -> MemUsage -> Text
 fmtMemUsage showSwap name ct =
   let
     padl = padLeftF columnWidth ' ' . fmtMem

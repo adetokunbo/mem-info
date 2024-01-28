@@ -54,10 +54,12 @@ module System.MemInfo (
   AsCmdName (..),
 ) where
 
+import Data.List(sortBy)
 import Data.Bifunctor (Bifunctor (..))
 import Data.Functor ((<&>))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
+import Data.Ord (comparing)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Fmt (
@@ -67,7 +69,7 @@ import Fmt (
   (|++|),
  )
 import System.Exit (exitFailure)
-import System.MemInfo.Choices (Choices (..), getChoices)
+import System.MemInfo.Choices (Choices (..), PrintOrder (..), getChoices)
 import System.MemInfo.Prelude
 import System.MemInfo.Print (
   AsCmdName (..),
@@ -100,36 +102,41 @@ import System.Posix.User (getEffectiveUserID)
 specified by @Choices@
 -}
 printProcs :: Choices -> IO ()
-printProcs cs = do
+printProcs cs@Choices{choiceByPid = byPid} = do
   bud <- verify cs
+  if byPid
+    then printProcs' withPid bud cs
+    else printProcs' dropId bud cs
+
+printProcs' :: (Ord a, AsCmdName a) => Indexer a -> ReportBud -> Choices -> IO ()
+printProcs' indexer bud cs = do
   let Choices
         { choiceShowSwap = showSwap
         , choiceOnlyTotal = onlyTotal
         , choiceWatchSecs = watchSecsMb
-        , choiceByPid = byPid
+        , choicePrintOrder = printOrder
         } = cs
-      printEachCmd totals = printMemUsages bud showSwap onlyTotal totals
-      printTheTotal = onlyPrintTotal bud showSwap onlyTotal
-      showTotal cmds = if onlyTotal then printTheTotal cmds else printEachCmd cmds
+      toList = sortBy (byPrintOrder' printOrder) . Map.toList
+      printEachCmd  = printMemUsages bud showSwap onlyTotal . toList
+      printTheTotal = onlyPrintTotal bud showSwap onlyTotal . toList
+      showTotal = if onlyTotal then printTheTotal else printEachCmd
       namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
-  case (watchSecsMb, byPid) of
-    (Nothing, True) -> readMemUsage' namer withPid bud >>= either haltLostPid showTotal
-    (Nothing, _) -> readMemUsage' namer dropId bud >>= either haltLostPid showTotal
-    (Just spanSecs, True) -> do
-      let unfold = unfoldMemUsageAfter' namer withPid spanSecs
-      loopPrintMemUsages unfold bud showTotal
-    (Just spanSecs, _) -> do
-      let unfold = unfoldMemUsageAfter' namer dropId spanSecs
+  case (watchSecsMb) of
+    Nothing -> readMemUsage' namer indexer bud >>= either haltLostPid showTotal
+    (Just spanSecs) -> do
+      let unfold = unfoldMemUsageAfter' namer indexer spanSecs
       loopPrintMemUsages unfold bud showTotal
 
 
-printMemUsages :: AsCmdName a => ReportBud -> Bool -> Bool -> Map a MemUsage -> IO ()
+printMemUsages
+  :: AsCmdName a
+  => ReportBud -> Bool -> Bool -> [(a, MemUsage)] -> IO ()
 printMemUsages bud showSwap onlyTotal totals = do
-  let overall = overallTotals $ Map.elems totals
+  let overall = overallTotals $ map snd totals
       overallIsAccurate = (showSwap && rbHasSwapPss bud) || rbHasPss bud
       print' (name, stats) = Text.putStrLn $ fmtMemUsage showSwap name stats
   Text.putStrLn $ fmtAsHeader showSwap
-  mapM_ print' $ Map.toList totals
+  mapM_ print' totals
   when overallIsAccurate $ Text.putStrLn $ fmtOverall showSwap overall
   reportFlaws bud showSwap onlyTotal
 
@@ -144,9 +151,9 @@ printUsage :: AsCmdName a => (a, MemUsage) -> IO ()
 printUsage = flip printUsage' True
 
 
-onlyPrintTotal :: ReportBud -> Bool -> Bool -> Map k MemUsage -> IO ()
+onlyPrintTotal :: AsCmdName k => ReportBud -> Bool -> Bool -> [(k, MemUsage)] -> IO ()
 onlyPrintTotal bud showSwap onlyTotal totals = do
-  let (private, swap) = overallTotals $ Map.elems totals
+  let (private, swap) = overallTotals $ map snd totals
       printRawTotal = Text.putStrLn . fmtMemBytes
   if showSwap
     then do
@@ -201,7 +208,7 @@ unfoldMemUsageAfter = unfoldMemUsageAfter' nameFor dropId
 
 -- | Like @'unfoldMemUsage'@ but computes the @'MemUsage's@ after a delay
 unfoldMemUsageAfter' ::
-  (Ord a, Integral seconds) =>
+  (Ord a, AsCmdName a, Integral seconds) =>
   ProcNamer ->
   Indexer a ->
   seconds ->
@@ -587,3 +594,24 @@ withPid (pid, name, pp) = ((pid, name), pp)
 -}
 dropId :: Indexer ProcName
 dropId (_pid, name, pp) = (name, pp)
+
+
+byPrintOrder ::
+  PrintOrder ->
+  (a, MemUsage) ->
+  (a, MemUsage) ->
+  Ordering
+byPrintOrder Swap = comparing $ muSwap . snd
+byPrintOrder Shared = comparing $ muShared . snd
+byPrintOrder Private = comparing $ muPrivate . snd
+byPrintOrder Count = comparing $ muCount . snd
+
+
+byPrintOrder' :: (AsCmdName a, Ord a) =>
+  Maybe PrintOrder ->
+  (a, MemUsage) ->
+  (a, MemUsage) ->
+  Ordering
+byPrintOrder' mbOrder =
+  let byName = comparing fst
+   in maybe byName byPrintOrder mbOrder

@@ -20,7 +20,7 @@ module MemInfo.OrphanInstances where
 import Data.GenValidity (GenValid (..))
 import Data.GenValidity.Text ()
 import Data.List.NonEmpty (nonEmpty)
-import System.MemInfo.Choices (Choices (..))
+import System.MemInfo.Choices (Choices (..), PrintOrder)
 import System.MemInfo.Proc (ExeInfo (..), StatusInfo)
 import System.Posix.Types (CPid (..), ProcessID)
 import Test.QuickCheck (Gen, frequency, suchThat)
@@ -52,6 +52,12 @@ deriving newtype instance GenValid ProcessID
 deriving instance Validity Choices
 
 
+deriving instance Validity PrintOrder
+
+
+deriving anyclass instance GenValid PrintOrder
+
+
 instance GenValid Choices where
   genValid =
     let genPositiveMb = frequency [(1, pure Nothing), (5, Just <$> genPositive)]
@@ -63,3 +69,4 @@ instance GenValid Choices where
           <*> genValid
           <*> genPositiveMb
           <*> genPids
+          <*> genValid

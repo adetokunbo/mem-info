@@ -95,7 +95,6 @@ import System.MemInfo.SysInfo (
   fmtSwapFlaws,
   mkReportBud,
  )
-import System.Posix.User (getEffectiveUserID)
 
 
 {- | Print a report to @stdout@ displaying the memory usage of the programs
@@ -324,7 +323,7 @@ verify' pidsMb = do
       thenMkBud = either (pure . Left) mkBud'
   case pidsMb of
     Just pids -> checkAllExist pids >>= thenMkBud
-    Nothing -> whenRoot $ allKnownProcs >>= thenMkBud
+    Nothing -> allKnownProcs >>= thenMkBud
 
 
 procRoot :: String
@@ -333,13 +332,6 @@ procRoot = "/proc/"
 
 pidPath :: String -> ProcessID -> FilePath
 pidPath base pid = "" +| procRoot |++| toInteger pid |+ "/" +| base |+ ""
-
-
-whenRoot :: IO (Either NotRun a) -> IO (Either NotRun a)
-whenRoot action = do
-  -- if choicePidsToShow is Nothing, must be running as root
-  isRoot' <- (== 0) <$> getEffectiveUserID
-  if isRoot' then action else pure $ Left NeedsRoot
 
 
 {- | pidExists returns false for any ProcessID that does not exist or cannot

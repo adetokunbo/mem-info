@@ -2,6 +2,13 @@
 
 `mem-info` uses [PVP Versioning][1].
 
+## Unreleased -- 2024-01-31
+
+- Remove the check for __root__ when no pids are specified
+
+  - previously, an error occurred if no pids were specified without sudo
+  - after this, all processes of the current user are shown
+
 ## 0.2.0.0 -- 2024-01-28
 
 - Simplify the output when the -d (--discriminate-by-pid) flag is used

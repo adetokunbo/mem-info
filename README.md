@@ -13,7 +13,7 @@ re-implementation allows its behaviour to be used as library code in haskell
 programs.
 
 It provides an executable command `printmem`, that mimics `ps_mem` while adding
-new features, and `mem-info`, a haskell library package.
+[new features], and `mem-info`, a haskell library package.
 
 ## Rationale
 
@@ -44,7 +44,7 @@ common per-process breakdown of the RAM measurements.
 
 You can download a pre-built binary from [releases].  It is a statically-linked executable that should run on most recent Linux distributions.
 
-Download it, place it in a directory on your path and give it executable permissions
+  Download it, place it in a directory on your path and give it executable permissions
 
 E.g, the following commands should suffice
 
@@ -84,19 +84,21 @@ Available options:
 ### Example output
 
 You can run `printmem` *without* filtering; this will try to display data for
-all running processes, so sudo is required
+all running processes accessible by the current user
 
-```sudo printmem```
+```printmem```
 
-Usually, you'll want to filter the results. which is supported by the `-p <pid>`
-option.  This can be specified multiple times to select multiple processes. [pgrep] is great companion tool for obtaining the specific sets of pids for filtering.
+Often, you'll want to filter the results. which is supported by the `-p <pid>`
+option. This can be specified multiple times to select multiple processes.
+[pgrep] is great companion tool for obtaining the specific sets of pids for
+filtering.
 
-#### Example: breakdown the memory use of the current user
+#### Example: breakdown the memory use of a different user
 
-To restrict output to the current $USER, you can obtain the user's process IDs using pgrep comme ca
+To restrict output to the specific user, you can obtain the user's process IDs using pgrep comme ca
 
 ```
-sudo printmem -S -p $(pgrep -d' -p ' -u $USER)
+  sudo printmem -S -p $(pgrep -d' -p ' -u <other-username>)
 ```
 
 giving output like this:
@@ -220,3 +222,4 @@ main = monitorRamOf $ 96334 :| [96335]-- replace with your own process IDs
 [releases]:           <https://github.com/adetokunbo/mem-info/releases>
 [nix]:                <https://nixos.org/manual/nix/stable/installation/installation>
 [cabal]:              <https://cabal.readthedocs.io/en/stable/index.html>
+[new features]:       <https://hackage.haskell.org/package/mem-info/changelog>

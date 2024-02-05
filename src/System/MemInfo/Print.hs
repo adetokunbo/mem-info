@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {- |
@@ -14,10 +15,12 @@ module System.MemInfo.Print (
   fmtAsHeader,
   fmtOverall,
   fmtMemUsage,
+  styleOutput,
 ) where
 
 import qualified Data.Text as Text
 import Fmt (
+  build,
   fixedF,
   padBothF,
   padLeftF,
@@ -28,8 +31,14 @@ import Fmt (
   (|++|),
   (||+),
  )
+import System.MemInfo.Choices (Style (..))
 import System.MemInfo.Prelude
 import System.MemInfo.Proc (MemUsage (..))
+
+
+-- | Generate the output for a given report using the specified style
+styleOutput :: (AsCmdName a) => Bool -> Style -> Bool -> [(a, MemUsage)] -> [Text]
+styleOutput showSwap style isAccurate = outputOf isAccurate (printStyle style showSwap)
 
 
 {- | Generates the text of a row displaying the metrics for a single command in
@@ -44,12 +53,24 @@ fmtMemUsage showSwap name ct =
     all' = padl $ muPrivate ct
     swap' = padl $ muSwap ct
     name' = cmdWithCount name $ muCount ct
-    ram = "" +| private |+ " + " +| shared |+ " = " +| all' |+ ""
-    label = "" +| name' |+ ""
+    ram = private |+ " + " +| shared |+ " = " +| all'
+    numbers = if showSwap then ram +| swap' else ram
    in
-    if showSwap
-      then ram <> ("" +| swap' |+ "\t") <> label
-      else ram <> "\t" <> label
+    numbers |+ "\t" +| name' |+ ""
+
+
+fmtMemUsageCsv :: (AsCmdName a) => Bool -> a -> MemUsage -> Text
+fmtMemUsageCsv showSwap name ct =
+  let
+    private = build $ muPrivate ct - muShared ct
+    shared = build $ muShared ct
+    all' = build $ muPrivate ct
+    swap' = build $ muSwap ct
+    name' = cmdWithCount name $ muCount ct
+    ram = private |+ "," +| shared |+ "," +| all' |+ ","
+    numbers = if showSwap then ram +| swap' |+ "," else ram
+   in
+    numbers +| name' |+ ""
 
 
 -- | Generates the text showing the overall memory in the memory report
@@ -109,12 +130,25 @@ fmtAsHeader showSwap =
     all' = padl hdrRamUsed
     name' = padr hdrProgram
     swap' = padl hdrSwapUsed
-    ram = "" +| private |+ " + " +| shared |+ " = " +| all' |+ ""
-    label = "" +| name' |+ ""
+    ram = private |+ " + " +| shared |+ " = " +| all'
+    numbers = if showSwap then ram +| swap' else ram
    in
-    if showSwap
-      then ram <> ("" +| swap' |+ "\t") <> label
-      else ram <> "\t" <> label
+    numbers |+ "\t" +| name' |+ ""
+
+
+-- | Generates the text of the printed header of the memory report
+fmtAsHeaderCsv :: Bool -> Text
+fmtAsHeaderCsv showSwap =
+  let
+    private = build hdrPrivate
+    shared = build hdrShared
+    all' = build hdrRamUsed
+    name' = build hdrProgram
+    swap' = build hdrSwapUsed
+    ram = private |+ "," +| shared |+ "," +| all' |+ ","
+    numbers = if showSwap then ram +| swap' |+ "," else ram
+   in
+    numbers +| name' |+ ""
 
 
 {- | Identifies a type as a label to use to index programs in the report
@@ -139,3 +173,42 @@ instance AsCmdName Text where
 instance AsCmdName (ProcessID, Text) where
   asCmdName (pid, name) = "" +| name |+ " [" +| toInteger pid |+ "]"
   cmdWithCount cmd _count = "" +| asCmdName cmd |+ ""
+
+
+overallTotals :: [MemUsage] -> (Int, Int)
+overallTotals cts =
+  let step (private, swap) ct = (private + muPrivate ct, swap + muSwap ct)
+   in foldl' step (0, 0) cts
+
+
+data Printers a = Printers
+  { psUsage :: a -> MemUsage -> Text
+  , psHeader :: Text
+  , psOverall :: (Int, Int) -> Maybe Text
+  }
+
+
+printStyle :: (AsCmdName a) => Style -> Bool -> Printers a
+printStyle style showSwap =
+  let usageFmt Normal = fmtMemUsage
+      usageFmt Csv = fmtMemUsageCsv
+      headerFmt Normal = fmtAsHeader
+      headerFmt Csv = fmtAsHeaderCsv
+      overallFmt Normal x = Just $ fmtOverall showSwap x
+      overallFmt Csv _ = Nothing
+   in Printers
+        { psUsage = usageFmt style showSwap
+        , psOverall = overallFmt style
+        , psHeader = headerFmt style showSwap
+        }
+
+
+outputOf :: (AsCmdName a) => Bool -> Printers a -> [(a, MemUsage)] -> [Text]
+outputOf isAccurate style usages =
+  let Printers {psUsage, psHeader, psOverall} = style
+      overall = psOverall $ overallTotals $ map snd usages
+      headerAndRows = [psHeader] <> map (uncurry psUsage) usages
+   in case overall of
+        Nothing -> headerAndRows
+        Just _ | not isAccurate -> headerAndRows
+        Just o -> headerAndRows <> [o]

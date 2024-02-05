@@ -44,12 +44,10 @@ fmtMemUsage showSwap name ct =
     all' = padl $ muPrivate ct
     swap' = padl $ muSwap ct
     name' = cmdWithCount name $ muCount ct
-    ram = "" +| private |+ " + " +| shared |+ " = " +| all' |+ ""
-    label = "" +| name' |+ ""
+    ram = private |+ " + " +| shared |+ " = " +| all'
+    numbers = if showSwap then ram +| swap' else ram
    in
-    if showSwap
-      then ram <> ("" +| swap' |+ "\t") <> label
-      else ram <> "\t" <> label
+    numbers |+ "\t" +| name' |+ ""
 
 
 -- | Generates the text showing the overall memory in the memory report
@@ -109,12 +107,10 @@ fmtAsHeader showSwap =
     all' = padl hdrRamUsed
     name' = padr hdrProgram
     swap' = padl hdrSwapUsed
-    ram = "" +| private |+ " + " +| shared |+ " = " +| all' |+ ""
-    label = "" +| name' |+ ""
+    ram = private |+ " + " +| shared |+ " = " +| all'
+    numbers = if showSwap then ram +| swap' else ram
    in
-    if showSwap
-      then ram <> ("" +| swap' |+ "\t") <> label
-      else ram <> "\t" <> label
+    numbers |+ "\t" +| name' |+ ""
 
 
 {- | Identifies a type as a label to use to index programs in the report

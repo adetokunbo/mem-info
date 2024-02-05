@@ -18,7 +18,6 @@ module System.MemInfo.Print (
   styleOutput,
 ) where
 
-import Data.List (singleton)
 import qualified Data.Text as Text
 import Fmt (
   build,
@@ -212,4 +211,4 @@ outputOf isAccurate style usages =
    in case overall of
         Nothing -> headerAndRows
         Just _ | not isAccurate -> headerAndRows
-        Just o -> headerAndRows <> singleton o
+        Just o -> headerAndRows <> [o]

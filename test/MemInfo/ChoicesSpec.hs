@@ -54,6 +54,7 @@ cmdlineOf changeCase c =
     manyPids xs = (map onePid (NE.toList xs) ++)
     pidsToShow = maybe id manyPids $ choicePidsToShow c
     printOrder = maybe id (\x -> (("-b " ++ changeCase (show x)) :)) $ choicePrintOrder c
+    style = maybe id (\x -> (("-y " ++ changeCase (show x)) :)) $ choiceStyle c
    in
     reversed
       $ printOrder
@@ -62,4 +63,5 @@ cmdlineOf changeCase c =
       $ onlyTotal
       $ byPid
       $ showSwap
+      $ style
       $ watchSecs mempty

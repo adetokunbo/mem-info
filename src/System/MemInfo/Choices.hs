@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 {- |
 Module      : System.MemInfo.Choices
@@ -13,6 +14,7 @@ __printmem__ command
 -}
 module System.MemInfo.Choices (
   Choices (..),
+  Style (..),
   PrintOrder (..),
   cmdInfo,
   getChoices,
@@ -57,6 +59,7 @@ data Choices = Choices
   , choiceWatchSecs :: !(Maybe Natural)
   , choicePidsToShow :: !(Maybe (NonEmpty ProcessID))
   , choicePrintOrder :: !(Maybe PrintOrder)
+  , choiceStyle :: !(Maybe Style)
   }
   deriving (Eq, Show, Generic)
 
@@ -77,6 +80,7 @@ parseChoices =
     <*> optional parseWatchPeriodSecs
     <*> optional parseChoicesPidsToShow
     <*> optional parsePrintOrder
+    <*> optional parseStyle
 
 
 parseChoicesPidsToShow :: Parser (NonEmpty ProcessID)
@@ -163,6 +167,32 @@ data PrintOrder
   | Private
   | Shared
   | Count
+  deriving (Eq, Show, Read, Generic)
+
+
+parseStyle :: Parser Style
+parseStyle =
+  option autoIgnoreCase
+    $ short 'y'
+    <> long "output-style"
+    <> metavar "< [normal] | csv >"
+    <> help (Text.unpack styleHelp)
+
+
+styleHelp :: Text
+styleHelp =
+  Text.unlines
+    [ "Determines how the output report is presented;"
+    , "'normal' is the default and is the same as if this option was omitted;"
+    , "'csv' outputs the usage and header rows in csv format, with all values in KiB and 'overall' row."
+    , "With 'csv', the --total (-t) flag is ignored"
+    ]
+
+
+-- | Determines the format style of the output
+data Style
+  = Csv
+  | Normal
   deriving (Eq, Show, Read, Generic)
 
 

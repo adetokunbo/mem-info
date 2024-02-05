@@ -18,12 +18,14 @@ module System.MemInfo.Choices (
   getChoices,
 ) where
 
+import qualified Data.Text as Text
 import GHC.Generics (Generic)
 import Options.Applicative (
   Parser,
   ParserInfo,
   ReadM,
   auto,
+  eitherReader,
   execParser,
   help,
   helper,
@@ -148,10 +150,10 @@ positiveNum =
 
 parsePrintOrder :: Parser PrintOrder
 parsePrintOrder =
-  option auto
+  option autoIgnoreCase
     $ short 'b'
     <> long "order-by"
-    <> metavar "<Private | Swap | Shared | Count>"
+    <> metavar "< private | swap | shared | count >"
     <> help "Orders the output by ascending values of the given field"
 
 
@@ -162,3 +164,7 @@ data PrintOrder
   | Shared
   | Count
   deriving (Eq, Show, Read, Generic)
+
+
+autoIgnoreCase :: (Read a) => ReadM a
+autoIgnoreCase = eitherReader $ readEither . Text.unpack . Text.toTitle . Text.pack

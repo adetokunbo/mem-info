@@ -59,6 +59,7 @@ import Data.Functor ((<&>))
 import Data.List (sortBy)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
+import Data.Maybe (fromMaybe)
 import Data.Ord (Down (..), comparing)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
@@ -69,13 +70,17 @@ import Fmt (
   (|++|),
  )
 import System.Exit (exitFailure)
-import System.MemInfo.Choices (Choices (..), PrintOrder (..), getChoices)
+import System.MemInfo.Choices (
+  Choices (..),
+  PrintOrder (..),
+  Style (..),
+  getChoices,
+ )
 import System.MemInfo.Prelude
 import System.MemInfo.Print (
   AsCmdName (..),
-  fmtAsHeader,
   fmtMemUsage,
-  fmtOverall,
+  styleOutput,
  )
 import System.MemInfo.Proc (
   BadStatus (..),
@@ -116,13 +121,15 @@ printProcs' indexer bud cs = do
         , choiceWatchSecs = watchSecsMb
         , choicePrintOrder = printOrder
         , choiceReversed = reversed
+        , choiceStyle = style
         } = cs
+      style' = fromMaybe Normal style
       toList = sortBy (byPrintOrder' reversed printOrder) . Map.toList
-      printEachCmd = printMemUsages bud showSwap onlyTotal . toList
+      printEachCmd = printMemUsages bud style' showSwap onlyTotal . toList
       printTheTotal = onlyPrintTotal bud showSwap onlyTotal . toList
       showTotal = if onlyTotal then printTheTotal else printEachCmd
       namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
-  case (watchSecsMb) of
+  case watchSecsMb of
     Nothing -> readMemUsage' namer indexer bud >>= either haltLostPid showTotal
     (Just spanSecs) -> do
       let unfold = unfoldMemUsageAfter' namer indexer spanSecs
@@ -132,17 +139,15 @@ printProcs' indexer bud cs = do
 printMemUsages ::
   (AsCmdName a) =>
   ReportBud ->
+  Style ->
   Bool ->
   Bool ->
   [(a, MemUsage)] ->
   IO ()
-printMemUsages bud showSwap onlyTotal totals = do
-  let overall = overallTotals $ map snd totals
-      overallIsAccurate = (showSwap && rbHasSwapPss bud) || rbHasPss bud
-      print' (name, stats) = Text.putStrLn $ fmtMemUsage showSwap name stats
-  Text.putStrLn $ fmtAsHeader showSwap
-  mapM_ print' totals
-  when overallIsAccurate $ Text.putStrLn $ fmtOverall showSwap overall
+printMemUsages bud style showSwap onlyTotal totals = do
+  let overallIsAccurate = (showSwap && rbHasSwapPss bud) || rbHasPss bud
+      output = styleOutput showSwap style overallIsAccurate totals
+  mapM_ Text.putStrLn output
   reportFlaws bud showSwap onlyTotal
 
 

@@ -116,13 +116,11 @@ headerSwap = "  Private  +   Shared   =   RAM Used Swap Used\tProgram [pid]"
 fmtOverallSpec :: Spec
 fmtOverallSpec = describe "fmtOverall" $ do
   describe "when swap is not required" $ do
-    it "does not show it"
-      $ fmtOverall False (1, 1)
-      `shouldBe` sampleNoSwapOverall
+    it "does not show it" $ do
+      fmtOverall False (1, 1) `shouldBe` sampleNoSwapOverall
   describe "when swap is required" $ do
-    it "does show it"
-      $ fmtOverall True (1, 1)
-      `shouldBe` sampleSwapOverall
+    it "does show it" $ do
+      fmtOverall True (1, 1) `shouldBe` sampleSwapOverall
 
 
 sampleNoSwapOverall :: Text
@@ -148,21 +146,18 @@ fmtMemUsageSpec = describe "fmtMemUsage" $ do
   describe "when displaying by-pid" $ do
     let usage = sampleUsage' 1
     describe "and swap is not required" $ do
-      it "does not show it"
-        $ fmtMemUsage False biName usage
-        `shouldBe` sampleTotalNoSwap
+      it "does not show it" $ do
+        fmtMemUsage False biName usage `shouldBe` sampleTotalNoSwap
 
     describe "when swap is required" $ do
-      it "shows it"
-        $ fmtMemUsage True biName usage
-        `shouldBe` sampleTotalSwap
+      it "shows it" $ do
+        fmtMemUsage True biName usage `shouldBe` sampleTotalSwap
 
   describe "when displaying by-name" $ do
     let usage = sampleUsage' 3
     describe "and swap is not required" $ do
-      it "does not show it"
-        $ fmtMemUsage False monoName usage
-        `shouldBe` sampleTotalNoSwapMono
+      it "does not show it" $ do
+        fmtMemUsage False monoName usage `shouldBe` sampleTotalNoSwapMono
 
 
 monoName :: Text

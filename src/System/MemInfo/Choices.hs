@@ -183,7 +183,7 @@ styleHelp =
   Text.unlines
     [ "Determines how the output report is presented;"
     , "'normal' is the default and is the same as if this option was omitted;"
-    , "'csv' outputs the usage and header rows in csv format, with all values in KiB and 'overall' row."
+    , "'csv' outputs the usage and header rows in csv format, with all values in KiB and no 'total' row."
     , "With 'csv', the --total (-t) flag is ignored"
     ]
 

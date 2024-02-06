@@ -1,6 +1,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 {- |
 Module      : System.MemInfo.Print
@@ -18,6 +20,7 @@ module System.MemInfo.Print (
   styleOutput,
 ) where
 
+import Data.Proxy (Proxy (..))
 import qualified Data.Text as Text
 import Fmt (
   build,
@@ -110,17 +113,19 @@ fmtMem' =
    in go
 
 
-hdrPrivate, hdrShared, hdrRamUsed, hdrSwapUsed, hdrProgram :: Text
+hdrPrivate, hdrShared, hdrRamUsed, hdrSwapUsed, hdrProgram, hdrCount, hdrPid :: Text
 hdrPrivate = "Private"
 hdrShared = "Shared"
 hdrRamUsed = "RAM Used"
 hdrSwapUsed = "Swap Used"
 hdrProgram = "Program"
+hdrCount = "(# processes)"
+hdrPid = "[pid]"
 
 
 -- | Generates the text of the printed header of the memory report
-fmtAsHeader :: Bool -> Text
-fmtAsHeader showSwap =
+fmtAsHeader :: Bool -> Bool -> Text
+fmtAsHeader hasPid showSwap =
   let
     padb = padBothF columnWidth ' '
     padr = padRightF columnWidth ' '
@@ -128,7 +133,8 @@ fmtAsHeader showSwap =
     private = padb hdrPrivate
     shared = padb hdrShared
     all' = padl hdrRamUsed
-    name' = padr hdrProgram
+    nameExt = if hasPid then hdrPid else hdrCount
+    name' = padr $ hdrProgram <> " " <> nameExt
     swap' = padl hdrSwapUsed
     ram = private |+ " + " +| shared |+ " = " +| all'
     numbers = if showSwap then ram +| swap' else ram
@@ -137,13 +143,14 @@ fmtAsHeader showSwap =
 
 
 -- | Generates the text of the printed header of the memory report
-fmtAsHeaderCsv :: Bool -> Text
-fmtAsHeaderCsv showSwap =
+fmtAsHeaderCsv :: Bool -> Bool -> Text
+fmtAsHeaderCsv hasPid showSwap =
   let
     private = build hdrPrivate
     shared = build hdrShared
     all' = build hdrRamUsed
-    name' = build hdrProgram
+    nameExt = if hasPid then hdrPid else hdrCount
+    name' = build $ hdrProgram <> " " <> nameExt
     swap' = build hdrSwapUsed
     ram = private |+ "," +| shared |+ "," +| all' |+ ","
     numbers = if showSwap then ram +| swap' |+ "," else ram
@@ -165,14 +172,20 @@ class AsCmdName a where
   cmdWithCount :: a -> Int -> Text
 
 
+  -- Indicate if pid or process count should shown in the hdr
+  hdrHasPid :: Proxy a -> Bool
+
+
 instance AsCmdName Text where
   asCmdName = id
   cmdWithCount cmd count = "" +| asCmdName cmd |+ " (" +| count |+ ")"
+  hdrHasPid _ = False
 
 
 instance AsCmdName (ProcessID, Text) where
   asCmdName (pid, name) = "" +| name |+ " [" +| toInteger pid |+ "]"
   cmdWithCount cmd _count = "" +| asCmdName cmd |+ ""
+  hdrHasPid _ = True
 
 
 overallTotals :: [MemUsage] -> (Int, Int)
@@ -188,12 +201,12 @@ data Printers a = Printers
   }
 
 
-printStyle :: (AsCmdName a) => Style -> Bool -> Printers a
+printStyle :: forall a. (AsCmdName a) => Style -> Bool -> Printers a
 printStyle style showSwap =
   let usageFmt Normal = fmtMemUsage
       usageFmt Csv = fmtMemUsageCsv
-      headerFmt Normal = fmtAsHeader
-      headerFmt Csv = fmtAsHeaderCsv
+      headerFmt Normal = fmtAsHeader (hdrHasPid @a Proxy)
+      headerFmt Csv = fmtAsHeaderCsv (hdrHasPid @a Proxy)
       overallFmt Normal x = Just $ fmtOverall showSwap x
       overallFmt Csv _ = Nothing
    in Printers

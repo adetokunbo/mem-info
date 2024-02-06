@@ -11,7 +11,8 @@ module MemInfo.PrintSpec (spec) where
 
 import Data.Text (Text)
 import qualified Data.Text as Text
-import System.MemInfo.Print (fmtAsHeader, fmtMemUsage, fmtOverall)
+import System.MemInfo.Choices (Style (Csv, Normal))
+import System.MemInfo.Print (fmtAsHeader, fmtMemUsage, fmtOverall, styleOutput)
 import System.MemInfo.Proc (MemUsage (..))
 import System.Posix.Types (ProcessID)
 import Test.Hspec
@@ -22,34 +23,103 @@ spec = describe "module System.MemInfo.Print" $ do
   fmtAsHeaderSpec
   fmtOverallSpec
   fmtMemUsageSpec
+  styleOutputSpec
+
+
+styleOutputSpec :: Spec
+styleOutputSpec = describe "styleOutput" $ do
+  describe "when accurate and swap shown" $ do
+    let count = 6
+        usage = sampleUsage' count
+        styleOutput' s = styleOutput True s True
+    describe "when style is csv" $ do
+      let style = Csv
+      describe "when discriminating by pid" $ do
+        let want =
+              [ "Private,Shared,RAM Used,Swap Used,Program [pid]"
+              , "1,1,2,4,by-id-and-name-cmd [100]"
+              ]
+        it "should generate the expected output" $ do
+          styleOutput' style [(biName, usage)] `shouldBe` want
+
+      describe "not discriminating by pid" $ do
+        let want =
+              [ "Private,Shared,RAM Used,Swap Used,Program (# processes)"
+              , "1,1,2,4,by-name-cmd (6)"
+              ]
+        it "should generate the expected output" $ do
+          styleOutput' style [(monoName, usage)] `shouldBe` want
+
+  describe "when accurate and no swap shown" $ do
+    let count = 6
+        usage = sampleUsage' count
+        styleOutput' s = styleOutput False s True
+    describe "when style is normal" $ do
+      let style = Normal
+          wantedSummary =
+            Text.unlines
+              [ "------------------------------------"
+              , "                             2.0 KiB"
+              , "===================================="
+              ]
+      describe "when discriminating by pid" $ do
+        let want =
+              [ "  Private  +   Shared   =   RAM Used\tProgram [pid]"
+              , "   1.0 KiB +    1.0 KiB =    2.0 KiB\tby-id-and-name-cmd [100]"
+              , wantedSummary
+              ]
+        it "should generate the expected output" $ do
+          styleOutput' style [(biName, usage)] `shouldBe` want
+
+      describe "not discriminating by pid" $ do
+        let want =
+              [ "  Private  +   Shared   =   RAM Used\tProgram (# processes)"
+              , "   1.0 KiB +    1.0 KiB =    2.0 KiB\tby-name-cmd (6)"
+              , wantedSummary
+              ]
+        it "should generate the expected output" $ do
+          styleOutput' style [(monoName, usage)] `shouldBe` want
 
 
 fmtAsHeaderSpec :: Spec
 fmtAsHeaderSpec = describe "fmtAsHeader" $ do
-  describe "when swap is not required" $ do
-    it "does not show it" $
-      fmtAsHeader False `shouldBe` headerNoSwap
+  describe "when discriminating by pid" $ do
+    let byPid = True
+    describe "when swap is not required" $ do
+      it "does not show it" $ do
+        fmtAsHeader byPid False `shouldBe` headerNoSwap
 
-  describe "when swap is required" $ do
-    it "does show it" $
-      fmtAsHeader True `shouldBe` headerSwap
+    describe "when swap is required" $ do
+      it "does show it" $ do
+        fmtAsHeader byPid True `shouldBe` headerSwap
+
+  describe "when not discriminating by pid" $ do
+    let byPid = False
+        withProcCount = Text.replace "[pid]" "(# processes)"
+    describe "when swap is not required" $ do
+      it "does not show it" $ do
+        fmtAsHeader byPid False `shouldBe` withProcCount headerNoSwap
+
+    describe "when swap is required" $ do
+      it "does show it" $ do
+        fmtAsHeader byPid True `shouldBe` withProcCount headerSwap
 
 
 headerNoSwap :: Text
-headerNoSwap = "  Private  +   Shared   =   RAM Used\tProgram   "
+headerNoSwap = "  Private  +   Shared   =   RAM Used\tProgram [pid]"
 
 
 headerSwap :: Text
-headerSwap = "  Private  +   Shared   =   RAM Used Swap Used\tProgram   "
+headerSwap = "  Private  +   Shared   =   RAM Used Swap Used\tProgram [pid]"
 
 
 fmtOverallSpec :: Spec
 fmtOverallSpec = describe "fmtOverall" $ do
   describe "when swap is not required" $ do
-    it "does not show it" $
+    it "does not show it" $ do
       fmtOverall False (1, 1) `shouldBe` sampleNoSwapOverall
   describe "when swap is required" $ do
-    it "does show it" $
+    it "does show it" $ do
       fmtOverall True (1, 1) `shouldBe` sampleSwapOverall
 
 
@@ -76,17 +146,17 @@ fmtMemUsageSpec = describe "fmtMemUsage" $ do
   describe "when displaying by-pid" $ do
     let usage = sampleUsage' 1
     describe "and swap is not required" $ do
-      it "does not show it" $
+      it "does not show it" $ do
         fmtMemUsage False biName usage `shouldBe` sampleTotalNoSwap
 
     describe "when swap is required" $ do
-      it "shows it" $
+      it "shows it" $ do
         fmtMemUsage True biName usage `shouldBe` sampleTotalSwap
 
   describe "when displaying by-name" $ do
     let usage = sampleUsage' 3
     describe "and swap is not required" $ do
-      it "does not show it" $
+      it "does not show it" $ do
         fmtMemUsage False monoName usage `shouldBe` sampleTotalNoSwapMono
 
 

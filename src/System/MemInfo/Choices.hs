@@ -26,7 +26,6 @@ import Options.Applicative (
   Parser,
   ParserInfo,
   ReadM,
-  auto,
   eitherReader,
   execParser,
   help,
@@ -149,7 +148,7 @@ positiveNum =
       | i > 0 = pure i
       | otherwise = readerError "Value must be greater than 0"
    in
-    auto >>= checkPositive
+    autoOrNotAllowed >>= checkPositive
 
 
 parsePrintOrder :: Parser PrintOrder
@@ -197,4 +196,16 @@ data Style
 
 
 autoIgnoreCase :: (Read a) => ReadM a
-autoIgnoreCase = eitherReader $ readEither . Text.unpack . Text.toTitle . Text.pack
+autoIgnoreCase =
+  let toTitle' = Text.unpack . Text.toTitle . Text.pack
+   in eitherReader $ readOrNotAllowed toTitle'
+
+
+autoOrNotAllowed :: (Read a) => ReadM a
+autoOrNotAllowed = eitherReader $ readOrNotAllowed id
+
+
+readOrNotAllowed :: (Read a) => (String -> String) -> String -> Either String a
+readOrNotAllowed f x = case readEither $ f x of
+  Left _ -> Left $ "value '" ++ x ++ "' is not permitted"
+  right -> right

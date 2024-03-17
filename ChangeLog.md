@@ -2,7 +2,9 @@
 
 `mem-info` uses [PVP Versioning][1].
 
-## Unreleased -- 2024-02-06
+## 0.3.0.0 -- 2024-03-17
+
+- Extended the dependency bounds to allow all bytestring 0.12.x
 
 - Remove the check for __root__ when no pids are specified
 

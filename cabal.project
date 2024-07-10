@@ -1,5 +1,5 @@
 packages: .
 
+tests: True
 
-package mem-info
-  flags: +build-the-readme
+test-show-details: streaming

@@ -122,7 +122,7 @@ instance Validity ExeInfo where
 
 -- | Combine @'ProcUsage'@, grouping them by the effective program name
 amass ::
-  Ord a =>
+  (Ord a) =>
   Bool ->
   [(a, ProcUsage)] ->
   Map a MemUsage
@@ -159,7 +159,7 @@ data MemUsage = MemUsage
 
 
 incrSubTotals ::
-  Ord a =>
+  (Ord a) =>
   Bool ->
   Map a SubTotal ->
   (a, ProcUsage) ->
@@ -336,19 +336,19 @@ incrSharedHuge ms = maybe ms $ \n -> ms {ssSharedHuge = n + ssSharedHuge ms}
 incrSmapStats :: SmapStats -> Text -> SmapStats
 incrSmapStats acc l =
   if
-      | Text.isPrefixOf "Private_Hugetlb:" l -> incrPrivateHuge acc $ smapValMb l
-      | Text.isPrefixOf "Shared_Hugetlb:" l -> incrSharedHuge acc $ smapValMb l
-      | Text.isPrefixOf "Shared" l -> incrShared acc $ smapValMb l
-      | Text.isPrefixOf "Private" l -> incrPrivate acc $ smapValMb l
-      | Text.isPrefixOf "Pss:" l ->
-          let acc' = acc {ssHasPss = True, ssPssCount = 1 + ssPssCount acc}
-           in incrPss acc' $ smapValMb l
-      | Text.isPrefixOf "Swap:" l -> incrSwap acc $ smapValMb l
-      | Text.isPrefixOf "SwapPss:" l -> incrSwapPss (acc {ssHasSwapPss = True}) $ smapValMb l
-      | otherwise -> acc
+    | Text.isPrefixOf "Private_Hugetlb:" l -> incrPrivateHuge acc $ smapValMb l
+    | Text.isPrefixOf "Shared_Hugetlb:" l -> incrSharedHuge acc $ smapValMb l
+    | Text.isPrefixOf "Shared" l -> incrShared acc $ smapValMb l
+    | Text.isPrefixOf "Private" l -> incrPrivate acc $ smapValMb l
+    | Text.isPrefixOf "Pss:" l ->
+        let acc' = acc {ssHasPss = True, ssPssCount = 1 + ssPssCount acc}
+         in incrPss acc' $ smapValMb l
+    | Text.isPrefixOf "Swap:" l -> incrSwap acc $ smapValMb l
+    | Text.isPrefixOf "SwapPss:" l -> incrSwapPss (acc {ssHasSwapPss = True}) $ smapValMb l
+    | otherwise -> acc
 
 
-smapValMb :: Read a => Text -> Maybe a
+smapValMb :: (Read a) => Text -> Maybe a
 smapValMb l =
   let memWords = Text.words l
       readVal (_ : x : _) = readMaybe $ Text.unpack x

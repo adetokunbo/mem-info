@@ -2,6 +2,10 @@
 
 `mem-info` uses [PVP Versioning][1].
 
+## 0.3.0.1 -- 2025-01-17
+
+- Fix test data generation in QuickCheck test
+
 ## 0.3.0.0 -- 2024-03-17
 
 - Extended the dependency bounds to allow all bytestring 0.12.x

@@ -1,14 +1,14 @@
 {
-  # Pin haskell-nix to a recent (as of 2023/11/24) commit
-  h8x-commit = "52112cd0c964ccfc2d6ca26d4c44ec42055e986f";
+  # Pin haskell-nix to a recent (as of 2024/12/29) commit
+  h8x-commit = "d65cc46ed1b8efadfbff6d41403b465525ffc225";
 
   # Pin hackage-nix to the potentially more recent version of hackage
-  hackage-nix-commit = "e08be045443108c50a10fbc4abcf5d1d20a13625";
+  hackage-nix-commit = "88fb58dc1ccce1290b7db5773a867169374b539d";
 
   # Specify the GHC version to use.
-  compiler-nix-name = "ghc928";
+  compiler-nix-name = "ghc96";
 
   # Specify the hackage index state which should be supported by either
   # the h8x-commit, or the hackage-nix-commit, whichever is latest
-  index-state = "2024-03-24T00:00:00Z";
+  index-state = "2024-12-29T00:00:00Z";
 }

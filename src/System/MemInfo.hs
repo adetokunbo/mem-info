@@ -404,7 +404,7 @@ parentNameIfMatched pid candidate = do
     Right si ->
       nameFromExeOnly (siParent si) >>= \case
         Right n | n == candidate -> pure $ Right n
-        _ -> pure $ Right $ siName si
+        _anyLostPid -> pure $ Right $ siName si
 
 
 -- | Represents errors that prevent a report from being generated

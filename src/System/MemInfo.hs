@@ -349,11 +349,15 @@ pidExeExists = fmap (either (const False) (const True)) . exeInfo
 -- | Obtain the @ProcName@ as the full cmd path
 nameAsFullCmd :: ProcNamer
 nameAsFullCmd pid = do
-  let cmdlinePath = pidPath "cmdline" pid
-      err = NoCmdLine pid
-      recombine = Text.intercalate " " . NE.toList
-      orLostPid = maybe (Left err) (Right . recombine)
-  readUtf8Text cmdlinePath >>= (pure . orLostPid) . parseCmdline
+  let
+    err = NoCmdLine pid
+    recombine = Text.intercalate " " . NE.toList
+    orLostPid = maybe (Left err) (Right . recombine)
+  readCmdlinePath pid >>= (pure . orLostPid) . parseCmdline
+
+
+readCmdlinePath :: ProcessID -> IO Text
+readCmdlinePath pid = readUtf8Text $ pidPath "cmdline" pid
 
 
 {- | Obtain the @ProcName@ by examining the path linked by
@@ -361,25 +365,26 @@ __{proc_root}\/pid\/exe__
 -}
 nameFromExeOnly :: ProcNamer
 nameFromExeOnly pid = do
+  let pickSuffix = \case
+        Just (x :| _) -> do
+          let addSuffix' b = x <> if b then " [updated]" else " [deleted]"
+          Right . baseName . addSuffix' <$> exists x
+        -- args should not be empty when {pid_root}/exe resolves to a
+        -- path, it's an error if it is
+        Nothing -> pure $ Left $ NoCmdLine pid
+
   exeInfo pid >>= \case
+    Left e -> pure $ Left e
     Right i | not $ eiDeleted i -> pure $ Right $ baseName $ eiOriginal i
     -- when the exe bud ends with (deleted), the version of the exe used to
     -- invoke the process has been removed from the filesystem. Sometimes it has
     -- been updated; examining both the original bud and the version in
     -- cmdline help determine what occurred
     Right ExeInfo {eiOriginal = orig} ->
-      exists orig >>= \case
-        True -> pure $ Right $ baseName $ "" +| orig |+ " [updated]"
-        _ -> do
-          let cmdlinePath = pidPath "cmdline" pid
-          readUtf8Text cmdlinePath <&> parseCmdline >>= \case
-            Just (x :| _) -> do
-              let addSuffix' b = x <> if b then " [updated]" else " [deleted]"
-              Right . baseName . addSuffix' <$> exists x
-            -- args should not be empty when {pid_root}/exe resolves to a
-            -- path, it's an error if it is
-            Nothing -> pure $ Left $ NoCmdLine pid
-    Left e -> pure $ Left e
+      exists orig >>= \wasUpdated ->
+        if wasUpdated
+          then pure $ Right $ baseName $ "" +| orig |+ " [updated]"
+          else readCmdlinePath pid >>= pickSuffix . parseCmdline
 
 
 -- | Functions that obtain a process name given its @pid@

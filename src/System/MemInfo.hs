@@ -498,13 +498,10 @@ checkAllExist pids =
 
 allKnownProcs :: IO (Either NotRun (NonEmpty ProcessID))
 allKnownProcs =
-  let readNaturals = fmap (mapMaybe readMaybe)
-      orNoPids = maybe (Left NoRecords) Right
-   in readNaturals (listDirectory procRoot)
-        >>= filterM pidExeExists
-        >>= pure
-        . orNoPids
-        . nonEmpty
+  let readIdsMaybe = fmap (mapMaybe readMaybe)
+      readProcessIDs = readIdsMaybe (listDirectory procRoot)
+      orNoPids = maybe (Left NoRecords) Right . nonEmpty
+   in readProcessIDs >>= filterM pidExeExists >>= pure . orNoPids
 
 
 baseName :: Text -> Text

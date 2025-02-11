@@ -409,8 +409,8 @@ parentNameIfMatched pid candidate = do
 
 -- | Represents errors that prevent a report from being generated
 data NotRun
-  = PidLost LostPid
-  | MissingPids (NonEmpty ProcessID)
+  = PidLost !LostPid
+  | MissingPids !(NonEmpty ProcessID)
   | NeedsRoot
   | OddKernel
   | NoRecords
@@ -429,12 +429,12 @@ fmtNotRun NoRecords = "could not find any process records"
 records.
 -}
 data LostPid
-  = NoExeFile ProcessID
-  | NoStatusCmd ProcessID
-  | NoStatusParent ProcessID
-  | NoCmdLine ProcessID
-  | BadStatm ProcessID
-  | NoProc ProcessID
+  = NoExeFile !ProcessID
+  | NoStatusCmd !ProcessID
+  | NoStatusParent !ProcessID
+  | NoCmdLine !ProcessID
+  | BadStatm !ProcessID
+  | NoProc !ProcessID
   deriving (Eq, Show)
 
 

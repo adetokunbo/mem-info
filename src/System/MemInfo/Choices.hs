@@ -16,11 +16,14 @@ module System.MemInfo.Choices (
   Choices (..),
   Style (..),
   PrintOrder (..),
+  Power (..),
+  Mem (..),
   cmdInfo,
   getChoices,
 ) where
 
 import qualified Data.Text as Text
+import Data.Text.Read (Reader, rational)
 import GHC.Generics (Generic)
 import Options.Applicative (
   Parser,
@@ -209,3 +212,12 @@ readOrNotAllowed :: (Read a) => (String -> String) -> String -> Either String a
 readOrNotAllowed f x = case readEither $ f x of
   Left _ -> Left $ "value '" ++ x ++ "' is not permitted"
   right -> right
+-- | Represents the power in memory quanity unit
+data Power = Ki | Mi | Gi | Ti deriving (Eq, Read, Show, Ord, Enum, Bounded)
+
+
+-- | Represents an amount of memory
+data Mem = Mem !Power !Float
+  deriving (Eq, Show, Ord)
+
+

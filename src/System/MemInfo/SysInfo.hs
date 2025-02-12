@@ -160,26 +160,27 @@ checkForFlaws bud = do
         , rbHasSwapPss = hasSwapPss
         } = bud
   (rbRamFlaws, rbSwapFlaws) <- case version of
-    (2, 4, _) -> do
+    (2, 4, _patch) -> do
       let memInfoPath = pidPath "meminfo" pid
           alt = (Just SomeSharedMem, Just NoSwap)
           best = (Just ExactForIsolatedMem, Just NoSwap)
           containsInact = Text.isInfixOf "Inact_"
           checkInact x = if containsInact x then best else alt
-      doesFileExist memInfoPath >>= \case
-        False -> pure alt
-        _ -> checkInact <$> readUtf8Text memInfoPath
-    (2, 6, _) -> do
+      doesFileExist memInfoPath >>= \hasMemInfo ->
+        if hasMemInfo
+          then pure alt
+          else checkInact <$> readUtf8Text memInfoPath
+    (2, 6, _patch) -> do
       let withSmaps = if hasPss then best else alt
           alt = (Just ExactForIsolatedMem, Just ExactForIsolatedSwap)
           best = (Nothing, Just ExactForIsolatedSwap)
           withNoSmaps = Just $ if fickleShared then NoSharedMem else SomeSharedMem
       pure $ if hasSmaps then withSmaps else (withNoSmaps, Just NoSwap)
-    (major, _, _) | major > 2 && hasSmaps -> do
+    (major, _minor, _patch) | major > 2 && hasSmaps -> do
       let alt = (Nothing, Just ExactForIsolatedSwap)
           best = (Nothing, Nothing)
       pure $ if hasSwapPss then best else alt
-    _ -> pure (Just ExactForIsolatedMem, Just NoSwap)
+    _other -> pure (Just ExactForIsolatedMem, Just NoSwap)
   pure $ bud {rbRamFlaws, rbSwapFlaws}
 
 

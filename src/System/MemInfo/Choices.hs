@@ -87,61 +87,61 @@ parseChoices =
 
 parseChoicesPidsToShow :: Parser (NonEmpty ProcessID)
 parseChoicesPidsToShow =
-  some1
-    $ option positiveNum
-    $ short 'p'
-    <> long "pids"
-    <> metavar "<pid1> [ -p pid2 ... -p pidN ]"
-    <> help "Only show memory usage of the specified PIDs"
+  some1 $
+    option positiveNum $
+      short 'p'
+        <> long "pids"
+        <> metavar "<pid1> [ -p pid2 ... -p pidN ]"
+        <> help "Only show memory usage of the specified PIDs"
 
 
 parseSplitArgs :: Parser Bool
 parseSplitArgs =
-  switch
-    $ short 's'
-    <> long "split-args"
-    <> help "Show and separate by all command line arguments"
+  switch $
+    short 's'
+      <> long "split-args"
+      <> help "Show and separate by all command line arguments"
 
 
 parseOnlyTotal :: Parser Bool
 parseOnlyTotal =
-  switch
-    $ short 't'
-    <> long "total"
-    <> help "Only show the total value"
+  switch $
+    short 't'
+      <> long "total"
+      <> help "Only show the total value"
 
 
 parseReversed :: Parser Bool
 parseReversed =
-  switch
-    $ short 'r'
-    <> long "reverse"
-    <> help "Reverses the output order so that output descends on the sorting field"
+  switch $
+    short 'r'
+      <> long "reverse"
+      <> help "Reverses the output order so that output descends on the sorting field"
 
 
 parseDiscriminateByPid :: Parser Bool
 parseDiscriminateByPid =
-  switch
-    $ short 'd'
-    <> long "discriminate-by-pid"
-    <> help "Show by process rather than by program"
+  switch $
+    short 'd'
+      <> long "discriminate-by-pid"
+      <> help "Show by process rather than by program"
 
 
 parseShowSwap :: Parser Bool
 parseShowSwap =
-  switch
-    $ short 'S'
-    <> long "show_swap"
-    <> help "Show swap information"
+  switch $
+    short 'S'
+      <> long "show_swap"
+      <> help "Show swap information"
 
 
 parseWatchPeriodSecs :: Parser Natural
 parseWatchPeriodSecs =
-  option positiveNum
-    $ short 'w'
-    <> long "watch"
-    <> metavar "N"
-    <> help "Measure and show memory every N seconds (N > 0)"
+  option positiveNum $
+    short 'w'
+      <> long "watch"
+      <> metavar "N"
+      <> help "Measure and show memory every N seconds (N > 0)"
 
 
 positiveNum :: (Read a, Ord a, Num a) => ReadM a
@@ -156,11 +156,11 @@ positiveNum =
 
 parsePrintOrder :: Parser PrintOrder
 parsePrintOrder =
-  option autoIgnoreCase
-    $ short 'b'
-    <> long "order-by"
-    <> metavar "< private | swap | shared | count >"
-    <> help "Orders the output by ascending values of the given field"
+  option autoIgnoreCase $
+    short 'b'
+      <> long "order-by"
+      <> metavar "< private | swap | shared | count >"
+      <> help "Orders the output by ascending values of the given field"
 
 
 -- | Determines the order in which @MemUsages@ in a report are printed out
@@ -174,11 +174,11 @@ data PrintOrder
 
 parseStyle :: Parser Style
 parseStyle =
-  option autoIgnoreCase
-    $ short 'y'
-    <> long "output-style"
-    <> metavar "< [normal] | csv >"
-    <> help (Text.unpack styleHelp)
+  option autoIgnoreCase $
+    short 'y'
+      <> long "output-style"
+      <> metavar "< [normal] | csv >"
+      <> help (Text.unpack styleHelp)
 
 
 styleHelp :: Text

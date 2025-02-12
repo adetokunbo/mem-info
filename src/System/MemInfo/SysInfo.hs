@@ -91,8 +91,8 @@ data ReportBud = ReportBud
   , rbHasPss :: !Bool
   , rbHasSwapPss :: !Bool
   , rbHasSmaps :: !Bool
-  , rbRamFlaws :: Maybe RamFlaw
-  , rbSwapFlaws :: Maybe SwapFlaw
+  , rbRamFlaws :: !(Maybe RamFlaw)
+  , rbSwapFlaws :: !(Maybe SwapFlaw)
   }
   deriving (Eq, Show)
 

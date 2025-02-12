@@ -210,7 +210,7 @@ autoOrNotAllowed = eitherReader $ readOrNotAllowed id
 
 readOrNotAllowed :: (Read a) => (String -> String) -> String -> Either String a
 readOrNotAllowed f x = case readEither $ f x of
-  Left _ -> Left $ "value '" ++ x ++ "' is not permitted"
+  Left _ignored -> Left $ "value '" ++ x ++ "' is not permitted"
   right -> right
 -- | Represents the power in memory quanity unit
 data Power = Ki | Mi | Gi | Ti deriving (Eq, Read, Show, Ord, Enum, Bounded)

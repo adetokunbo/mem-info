@@ -18,6 +18,7 @@ module System.MemInfo.Choices (
   PrintOrder (..),
   Power (..),
   Mem (..),
+  asFloat,
   memReader,
   cmdInfo,
   getChoices,
@@ -237,6 +238,13 @@ data Power = Ki | Mi | Gi | Ti
     (Eq, Read, Show, Ord, Enum, Bounded, Generic)
 
 
+floatingFactor :: Power -> Double
+floatingFactor Ki = 1.0
+floatingFactor Mi = 1024.0
+floatingFactor Gi = 1024.0 ** 2
+floatingFactor Ti = 1024.0 ** 3
+
+
 powerReader :: Text -> Either String (Power, Text)
 powerReader x =
   let (want, extra) = Text.splitAt 3 $ Text.stripStart x
@@ -251,6 +259,10 @@ powerReader x =
 -- | Represents an amount of memory
 data Mem = Mem !Power !Deci
   deriving (Eq, Show, Ord, Generic)
+
+
+asFloat :: Mem -> Double
+asFloat (Mem pow x) = realToFrac x * floatingFactor pow
 
 
 memReader :: Text -> Either String (Mem, Text)

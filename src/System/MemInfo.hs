@@ -72,8 +72,10 @@ import Fmt (
 import System.Exit (exitFailure)
 import System.MemInfo.Choices (
   Choices (..),
+  Mem (..),
   PrintOrder (..),
   Style (..),
+  asFloat,
   getChoices,
  )
 import System.MemInfo.Prelude
@@ -122,11 +124,12 @@ printProcs' indexer bud cs = do
         , choicePrintOrder = printOrder
         , choiceReversed = reversed
         , choiceStyle = style
+        , choiceMinMemory = mem
         } = cs
       style' = fromMaybe Normal style
-      toList = sortBy (byPrintOrder' reversed printOrder) . Map.toList
+      toList = filterLT mem . sortBy (byPrintOrder' reversed printOrder) . Map.toList
       printEachCmd = printMemUsages bud style' showSwap onlyTotal . toList
-      printTheTotal = onlyPrintTotal bud showSwap onlyTotal . toList
+      printTheTotal = onlyPrintTotal bud showSwap onlyTotal . Map.toList
       showTotal = if onlyTotal then printTheTotal else printEachCmd
       namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
   case watchSecsMb of
@@ -633,3 +636,12 @@ byPrintOrder' reversed mbOrder =
 
 comparing' :: (Ord a) => (b -> a) -> b -> b -> Ordering
 comparing' f a b = compare (Down $ f a) (Down $ f b)
+
+
+memLT :: Mem -> (a, MemUsage) -> Bool
+memLT mem (_ignored, mu) = asFloat mem < fromIntegral (muPrivate mu)
+
+
+filterLT :: Maybe Mem -> [(a, MemUsage)] -> [(a, MemUsage)]
+filterLT Nothing xs = xs
+filterLT (Just mem) xs = filter (memLT mem) xs

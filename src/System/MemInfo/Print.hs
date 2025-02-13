@@ -15,6 +15,7 @@ This module provides functions that format the output of the __printmem__ comman
 -}
 module System.MemInfo.Print (
   AsCmdName (asCmdName),
+  fmtMem,
   fmtAsHeader,
   fmtOverall,
   fmtMemUsage,
@@ -106,7 +107,7 @@ columnWidth :: Int
 columnWidth = 10
 
 
-doFmt :: Power -> Float -> Text
+doFmt :: (Fractional a, Real a) => Power -> a -> Text
 doFmt =
   let doFmt' p x = "" +| fixedF 1 x |+ " " +|| p ||+ "B"
       go p x | p == maxBound = doFmt' p x

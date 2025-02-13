@@ -18,10 +18,12 @@ module System.MemInfo.Choices (
   PrintOrder (..),
   Power (..),
   Mem (..),
+  memReader,
   cmdInfo,
   getChoices,
 ) where
 
+import Data.Fixed (Deci)
 import qualified Data.Text as Text
 import Data.Text.Read (Reader, rational)
 import GHC.Generics (Generic)
@@ -62,6 +64,7 @@ data Choices = Choices
   , choicePidsToShow :: !(Maybe (NonEmpty ProcessID))
   , choicePrintOrder :: !(Maybe PrintOrder)
   , choiceStyle :: !(Maybe Style)
+  , choiceMinMemory :: !(Maybe Mem)
   }
   deriving (Eq, Show, Generic)
 
@@ -83,6 +86,7 @@ parseChoices =
     <*> optional parseChoicesPidsToShow
     <*> optional parsePrintOrder
     <*> optional parseStyle
+    <*> optional parseMinReported
 
 
 parseChoicesPidsToShow :: Parser (NonEmpty ProcessID)
@@ -172,6 +176,15 @@ data PrintOrder
   deriving (Eq, Show, Read, Generic)
 
 
+parseMinReported :: Parser Mem
+parseMinReported =
+  option (eitherReader $ fromReader memReader) $
+    short 'm'
+      <> long "min-reported"
+      <> metavar "<threshold>[K|M|G|T]iB, e.g 1.1KiB | 2MiB | 4.0GiB"
+      <> help "Specifies a minimum below which memory values are omitted"
+
+
 parseStyle :: Parser Style
 parseStyle =
   option autoIgnoreCase $
@@ -212,12 +225,36 @@ readOrNotAllowed :: (Read a) => (String -> String) -> String -> Either String a
 readOrNotAllowed f x = case readEither $ f x of
   Left _ignored -> Left $ "value '" ++ x ++ "' is not permitted"
   right -> right
+
+
+fromReader :: Reader a -> String -> Either String a
+fromReader reader = fmap fst . reader . Text.pack
+
+
 -- | Represents the power in memory quanity unit
-data Power = Ki | Mi | Gi | Ti deriving (Eq, Read, Show, Ord, Enum, Bounded)
+data Power = Ki | Mi | Gi | Ti
+  deriving
+    (Eq, Read, Show, Ord, Enum, Bounded, Generic)
+
+
+powerReader :: Text -> Either String (Power, Text)
+powerReader x =
+  let (want, extra) = Text.splitAt 3 $ Text.stripStart x
+      go "Ki" = Right (Ki, extra)
+      go "Mi" = Right (Mi, extra)
+      go "Gi" = Right (Gi, extra)
+      go "Ti" = Right (Ti, extra)
+      go _other = Left "invalid Power"
+   in go $ Text.take 2 want
 
 
 -- | Represents an amount of memory
-data Mem = Mem !Power !Float
-  deriving (Eq, Show, Ord)
+data Mem = Mem !Power !Deci
+  deriving (Eq, Show, Ord, Generic)
 
 
+memReader :: Text -> Either String (Mem, Text)
+memReader x = do
+  (num, rest) <- rational (Text.stripStart x)
+  (power, extra) <- powerReader rest
+  pure (Mem power num, extra)

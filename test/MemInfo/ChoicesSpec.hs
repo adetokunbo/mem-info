@@ -15,6 +15,7 @@ import qualified Data.Text as Text
 import MemInfo.OrphanInstances ()
 import Options.Applicative (defaultPrefs, execParserPure, getParseResult)
 import System.MemInfo.Choices (Choices (..), cmdInfo)
+import System.MemInfo.Print (fmtMem)
 import Test.Hspec
 import Test.QuickCheck (Gen, Property, elements, forAll, suchThat)
 
@@ -26,8 +27,8 @@ spec = describe "module System.MemInfo.Choices" $ do
 
 prop_roundtripParseChoices :: Property
 prop_roundtripParseChoices =
-  forAll genCmdLine
-    $ \(choices, args) -> Just choices == getParseResult (execParserPure defaultPrefs cmdInfo args)
+  forAll genCmdLine $
+    \(choices, args) -> Just choices == getParseResult (execParserPure defaultPrefs cmdInfo args)
 
 
 genCmdLine :: Gen (Choices, [String])
@@ -44,6 +45,7 @@ genChangeCase = elements [id, Text.toLower, Text.toUpper]
 cmdlineOf :: (String -> String) -> Choices -> [String]
 cmdlineOf changeCase c =
   let
+    removeSpace = Text.replace " " ""
     splitArgs = if choiceSplitArgs c then ("-s" :) else id
     onlyTotal = if choiceOnlyTotal c then ("-t" :) else id
     byPid = if choiceByPid c then ("-d" :) else id
@@ -55,13 +57,15 @@ cmdlineOf changeCase c =
     pidsToShow = maybe id manyPids $ choicePidsToShow c
     printOrder = maybe id (\x -> (("-b " ++ changeCase (show x)) :)) $ choicePrintOrder c
     style = maybe id (\x -> (("-y " ++ changeCase (show x)) :)) $ choiceStyle c
+    limitMem = maybe id (\x -> (("-m " ++ Text.unpack (removeSpace $ fmtMem x)) :)) $ choiceMinMemory c
    in
-    reversed
-      $ printOrder
-      $ pidsToShow
-      $ splitArgs
-      $ onlyTotal
-      $ byPid
-      $ showSwap
-      $ style
-      $ watchSecs mempty
+    reversed $
+      printOrder $
+        pidsToShow $
+          splitArgs $
+            onlyTotal $
+              byPid $
+                showSwap $
+                  style $
+                    watchSecs $
+                      limitMem mempty

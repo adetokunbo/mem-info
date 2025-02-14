@@ -107,17 +107,17 @@ columnWidth :: Int
 columnWidth = 10
 
 
-doFmt :: (Fractional a, Real a) => Power -> a -> Text
+doFmt :: Power -> Double -> Text
 doFmt =
   let doFmt' p x = "" +| fixedF 1 x |+ " " +|| p ||+ "B"
       go p x | p == maxBound = doFmt' p x
-      go p x | x > 1000 = doFmt (succ p) (x / 1024)
+      go p x | x >= 1024 = doFmt (succ p) (x / 1024.0)
       go p x = doFmt' p x
    in go
 
 
 fmtMem :: Mem -> Text
-fmtMem (Mem p x) = doFmt p x
+fmtMem (Mem p x) = doFmt p $ realToFrac x
 
 
 hdrPrivate, hdrShared, hdrRamUsed, hdrSwapUsed, hdrProgram, hdrCount, hdrPid :: Text

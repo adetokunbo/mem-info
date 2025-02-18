@@ -3,3 +3,4 @@ packages: .
 tests: True
 
 test-show-details: streaming
+split-sections: True

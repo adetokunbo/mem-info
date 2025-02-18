@@ -64,7 +64,9 @@ $ chmod u+x $my_local_bin
 Usage: printmem [-s|--split-args] [-t|--total] [-d|--discriminate-by-pid]
                 [-S|--show_swap] [-r|--reverse] [-w|--watch N]
                 [(-p|--pids <pid1> [ -p pid2 ... -p pidN ])]
-                [-b|--order-by <Private | Swap | Shared | Count>]
+                [-b|--order-by < private | swap | shared | count >]
+                [-y|--output-style < [normal] | csv >]
+                [-m|--min-reported <threshold>[K|M|G|T]iB, e.g 1.1KiB | 2MiB | 4.0GiB]
 
 Available options:
   -h,--help                Show this help text
@@ -72,13 +74,24 @@ Available options:
   -t,--total               Only show the total value
   -d,--discriminate-by-pid Show by process rather than by program
   -S,--show_swap           Show swap information
-  -r,--reverse             Reverses the order of output, making it descending
+  -r,--reverse             Reverses the output order so that output descends on
+                           the sorting field
   -w,--watch N             Measure and show memory every N seconds (N > 0)
   -p,--pids <pid1> [ -p pid2 ... -p pidN ]
                            Only show memory usage of the specified PIDs
-  -b,--order-by <Private | Swap | Shared | Count>
+  -b,--order-by < private | swap | shared | count >
                            Orders the output by ascending values of the given
                            field
+  -y,--output-style < [normal] | csv >
+                           Determines how the output report is presented;
+                           'normal' is the default and is the same as if this
+                           option was omitted; 'csv' outputs the usage and
+                           header rows in csv format, with all values in KiB and
+                           no 'total' row. With 'csv', the --total (-t) flag is
+                           ignored
+  -m,--min-reported <threshold>[K|M|G|T]iB, e.g 1.1KiB | 2MiB | 4.0GiB
+                           Specifies a minimum below which memory values are
+                           omitted
 ```
 
 ### Example output

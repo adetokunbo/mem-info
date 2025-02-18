@@ -2,6 +2,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StrictData #-}
 {-# LANGUAGE TypeApplications #-}
 
 {- |
@@ -14,6 +15,7 @@ This module provides functions that format the output of the __printmem__ comman
 -}
 module System.MemInfo.Print (
   AsCmdName (asCmdName),
+  fmtMem,
   fmtAsHeader,
   fmtOverall,
   fmtMemUsage,
@@ -34,7 +36,11 @@ import Fmt (
   (|++|),
   (||+),
  )
-import System.MemInfo.Choices (Style (..))
+import System.MemInfo.Choices (
+  Mem (..),
+  Power (..),
+  Style (..),
+ )
 import System.MemInfo.Prelude
 import System.MemInfo.Proc (MemUsage (..))
 
@@ -50,7 +56,7 @@ the memory report
 fmtMemUsage :: (AsCmdName a) => Bool -> a -> MemUsage -> Text
 fmtMemUsage showSwap name ct =
   let
-    padl = padLeftF columnWidth ' ' . fmtMem
+    padl = padLeftF columnWidth ' ' . fmtMemKb
     private = padl $ muPrivate ct - muShared ct
     shared = padl $ muShared ct
     all' = padl $ muPrivate ct
@@ -85,7 +91,7 @@ fmtOverall showSwap (private, swap) =
     top = Text.replicate rimLength "-"
     gap = Text.replicate gapLength " "
     bottom = Text.replicate rimLength "="
-    padl = padLeftF columnWidth ' ' . fmtMem
+    padl = padLeftF columnWidth ' ' . fmtMemKb
     withSwap = "" +| gap |++| padl private |++| padl swap |+ ""
     noSwap = "" +| gap |++| padl private |+ ""
     out = if showSwap then withSwap else noSwap
@@ -93,24 +99,25 @@ fmtOverall showSwap (private, swap) =
     Text.unlines [top, out, bottom]
 
 
-data Power = Ki | Mi | Gi | Ti deriving (Eq, Show, Ord, Enum, Bounded)
-
-
-fmtMem :: Int -> Text
-fmtMem = fmtMem' Ki . fromIntegral
+fmtMemKb :: Int -> Text
+fmtMemKb = fmtMem . Mem Ki . fromIntegral
 
 
 columnWidth :: Int
 columnWidth = 10
 
 
-fmtMem' :: Power -> Float -> Text
-fmtMem' =
-  let doFmt p x = "" +| fixedF 1 x |+ " " +|| p ||+ "B"
-      go p x | p == maxBound = doFmt p x
-      go p x | x > 1000 = fmtMem' (succ p) (x / 1024)
-      go p x = doFmt p x
+doFmt :: Power -> Double -> Text
+doFmt =
+  let doFmt' p x = "" +| fixedF 1 x |+ " " +|| p ||+ "B"
+      go p x | p == maxBound = doFmt' p x
+      go p x | x >= 1024 = doFmt (succ p) (x / 1024.0)
+      go p x = doFmt' p x
    in go
+
+
+fmtMem :: Mem -> Text
+fmtMem (Mem p x) = doFmt p $ realToFrac x
 
 
 hdrPrivate, hdrShared, hdrRamUsed, hdrSwapUsed, hdrProgram, hdrCount, hdrPid :: Text

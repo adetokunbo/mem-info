@@ -72,8 +72,10 @@ import Fmt (
 import System.Exit (exitFailure)
 import System.MemInfo.Choices (
   Choices (..),
+  Mem (..),
   PrintOrder (..),
   Style (..),
+  asFloat,
   getChoices,
  )
 import System.MemInfo.Prelude
@@ -122,11 +124,12 @@ printProcs' indexer bud cs = do
         , choicePrintOrder = printOrder
         , choiceReversed = reversed
         , choiceStyle = style
+        , choiceMinMemory = mem
         } = cs
       style' = fromMaybe Normal style
-      toList = sortBy (byPrintOrder' reversed printOrder) . Map.toList
+      toList = filterLT mem . sortBy (byPrintOrder' reversed printOrder) . Map.toList
       printEachCmd = printMemUsages bud style' showSwap onlyTotal . toList
-      printTheTotal = onlyPrintTotal bud showSwap onlyTotal . toList
+      printTheTotal = onlyPrintTotal bud showSwap onlyTotal . Map.toList
       showTotal = if onlyTotal then printTheTotal else printEachCmd
       namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
   case watchSecsMb of
@@ -349,11 +352,15 @@ pidExeExists = fmap (either (const False) (const True)) . exeInfo
 -- | Obtain the @ProcName@ as the full cmd path
 nameAsFullCmd :: ProcNamer
 nameAsFullCmd pid = do
-  let cmdlinePath = pidPath "cmdline" pid
-      err = NoCmdLine pid
-      recombine = Text.intercalate " " . NE.toList
-      orLostPid = maybe (Left err) (Right . recombine)
-  readUtf8Text cmdlinePath >>= (pure . orLostPid) . parseCmdline
+  let
+    err = NoCmdLine pid
+    recombine = Text.intercalate " " . NE.toList
+    orLostPid = maybe (Left err) (Right . recombine)
+  readCmdlinePath pid >>= (pure . orLostPid) . parseCmdline
+
+
+readCmdlinePath :: ProcessID -> IO Text
+readCmdlinePath pid = readUtf8Text $ pidPath "cmdline" pid
 
 
 {- | Obtain the @ProcName@ by examining the path linked by
@@ -361,25 +368,26 @@ __{proc_root}\/pid\/exe__
 -}
 nameFromExeOnly :: ProcNamer
 nameFromExeOnly pid = do
+  let pickSuffix = \case
+        Just (x :| _) -> do
+          let addSuffix' b = x <> if b then " [updated]" else " [deleted]"
+          Right . baseName . addSuffix' <$> exists x
+        -- args should not be empty when {pid_root}/exe resolves to a
+        -- path, it's an error if it is
+        Nothing -> pure $ Left $ NoCmdLine pid
+
   exeInfo pid >>= \case
+    Left e -> pure $ Left e
     Right i | not $ eiDeleted i -> pure $ Right $ baseName $ eiOriginal i
     -- when the exe bud ends with (deleted), the version of the exe used to
     -- invoke the process has been removed from the filesystem. Sometimes it has
     -- been updated; examining both the original bud and the version in
     -- cmdline help determine what occurred
     Right ExeInfo {eiOriginal = orig} ->
-      exists orig >>= \case
-        True -> pure $ Right $ baseName $ "" +| orig |+ " [updated]"
-        _ -> do
-          let cmdlinePath = pidPath "cmdline" pid
-          readUtf8Text cmdlinePath <&> parseCmdline >>= \case
-            Just (x :| _) -> do
-              let addSuffix' b = x <> if b then " [updated]" else " [deleted]"
-              Right . baseName . addSuffix' <$> exists x
-            -- args should not be empty when {pid_root}/exe resolves to a
-            -- path, it's an error if it is
-            Nothing -> pure $ Left $ NoCmdLine pid
-    Left e -> pure $ Left e
+      exists orig >>= \wasUpdated ->
+        if wasUpdated
+          then pure $ Right $ baseName $ "" +| orig |+ " [updated]"
+          else readCmdlinePath pid >>= pickSuffix . parseCmdline
 
 
 -- | Functions that obtain a process name given its @pid@
@@ -404,13 +412,13 @@ parentNameIfMatched pid candidate = do
     Right si ->
       nameFromExeOnly (siParent si) >>= \case
         Right n | n == candidate -> pure $ Right n
-        _ -> pure $ Right $ siName si
+        _anyLostPid -> pure $ Right $ siName si
 
 
 -- | Represents errors that prevent a report from being generated
 data NotRun
-  = PidLost LostPid
-  | MissingPids (NonEmpty ProcessID)
+  = PidLost !LostPid
+  | MissingPids !(NonEmpty ProcessID)
   | NeedsRoot
   | OddKernel
   | NoRecords
@@ -429,12 +437,12 @@ fmtNotRun NoRecords = "could not find any process records"
 records.
 -}
 data LostPid
-  = NoExeFile ProcessID
-  | NoStatusCmd ProcessID
-  | NoStatusParent ProcessID
-  | NoCmdLine ProcessID
-  | BadStatm ProcessID
-  | NoProc ProcessID
+  = NoExeFile !ProcessID
+  | NoStatusCmd !ProcessID
+  | NoStatusParent !ProcessID
+  | NoCmdLine !ProcessID
+  | BadStatm !ProcessID
+  | NoProc !ProcessID
   deriving (Eq, Show)
 
 
@@ -493,13 +501,10 @@ checkAllExist pids =
 
 allKnownProcs :: IO (Either NotRun (NonEmpty ProcessID))
 allKnownProcs =
-  let readNaturals = fmap (mapMaybe readMaybe)
-      orNoPids = maybe (Left NoRecords) Right
-   in readNaturals (listDirectory procRoot)
-        >>= filterM pidExeExists
-        >>= pure
-        . orNoPids
-        . nonEmpty
+  let readIdsMaybe = fmap (mapMaybe readMaybe)
+      readProcessIDs = readIdsMaybe (listDirectory procRoot)
+      orNoPids = maybe (Left NoRecords) Right . nonEmpty
+   in readProcessIDs >>= filterM pidExeExists >>= pure . orNoPids
 
 
 baseName :: Text -> Text
@@ -631,3 +636,12 @@ byPrintOrder' reversed mbOrder =
 
 comparing' :: (Ord a) => (b -> a) -> b -> b -> Ordering
 comparing' f a b = compare (Down $ f a) (Down $ f b)
+
+
+memLT :: Mem -> (a, MemUsage) -> Bool
+memLT mem (_ignored, mu) = asFloat mem < fromIntegral (muPrivate mu)
+
+
+filterLT :: Maybe Mem -> [(a, MemUsage)] -> [(a, MemUsage)]
+filterLT Nothing xs = xs
+filterLT (Just mem) xs = filter (memLT mem) xs

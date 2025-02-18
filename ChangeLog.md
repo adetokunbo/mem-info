@@ -2,6 +2,14 @@
 
 `mem-info` uses [PVP Versioning][1].
 
+## 0.3.1.0 -- 2025-02-18
+
+- Add option -m (--min-reported)
+
+  This filters out processes with low memory by specifying a lower bound for
+  output. Correct filter amounts are specified as quantities along with a unit;
+  one of KiB, MiB, GiB or TiB
+
 ## 0.3.0.1 -- 2025-01-17
 
 - Fix test data generation in QuickCheck test

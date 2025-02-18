@@ -16,11 +16,17 @@ module System.MemInfo.Choices (
   Choices (..),
   Style (..),
   PrintOrder (..),
+  Power (..),
+  Mem (..),
+  asFloat,
+  memReader,
   cmdInfo,
   getChoices,
 ) where
 
+import Data.Fixed (Deci)
 import qualified Data.Text as Text
+import Data.Text.Read (Reader, rational)
 import GHC.Generics (Generic)
 import Options.Applicative (
   Parser,
@@ -59,6 +65,7 @@ data Choices = Choices
   , choicePidsToShow :: !(Maybe (NonEmpty ProcessID))
   , choicePrintOrder :: !(Maybe PrintOrder)
   , choiceStyle :: !(Maybe Style)
+  , choiceMinMemory :: !(Maybe Mem)
   }
   deriving (Eq, Show, Generic)
 
@@ -80,65 +87,66 @@ parseChoices =
     <*> optional parseChoicesPidsToShow
     <*> optional parsePrintOrder
     <*> optional parseStyle
+    <*> optional parseMinReported
 
 
 parseChoicesPidsToShow :: Parser (NonEmpty ProcessID)
 parseChoicesPidsToShow =
-  some1
-    $ option positiveNum
-    $ short 'p'
-    <> long "pids"
-    <> metavar "<pid1> [ -p pid2 ... -p pidN ]"
-    <> help "Only show memory usage of the specified PIDs"
+  some1 $
+    option positiveNum $
+      short 'p'
+        <> long "pids"
+        <> metavar "<pid1> [ -p pid2 ... -p pidN ]"
+        <> help "Only show memory usage of the specified PIDs"
 
 
 parseSplitArgs :: Parser Bool
 parseSplitArgs =
-  switch
-    $ short 's'
-    <> long "split-args"
-    <> help "Show and separate by all command line arguments"
+  switch $
+    short 's'
+      <> long "split-args"
+      <> help "Show and separate by all command line arguments"
 
 
 parseOnlyTotal :: Parser Bool
 parseOnlyTotal =
-  switch
-    $ short 't'
-    <> long "total"
-    <> help "Only show the total value"
+  switch $
+    short 't'
+      <> long "total"
+      <> help "Only show the total value"
 
 
 parseReversed :: Parser Bool
 parseReversed =
-  switch
-    $ short 'r'
-    <> long "reverse"
-    <> help "Reverses the output order so that output descends on the sorting field"
+  switch $
+    short 'r'
+      <> long "reverse"
+      <> help "Reverses the output order so that output descends on the sorting field"
 
 
 parseDiscriminateByPid :: Parser Bool
 parseDiscriminateByPid =
-  switch
-    $ short 'd'
-    <> long "discriminate-by-pid"
-    <> help "Show by process rather than by program"
+  switch $
+    short 'd'
+      <> long "discriminate-by-pid"
+      <> help "Show by process rather than by program"
 
 
 parseShowSwap :: Parser Bool
 parseShowSwap =
-  switch
-    $ short 'S'
-    <> long "show_swap"
-    <> help "Show swap information"
+  switch $
+    short 'S'
+      <> long "show_swap"
+      <> help "Show swap information"
 
 
 parseWatchPeriodSecs :: Parser Natural
 parseWatchPeriodSecs =
-  option positiveNum
-    $ short 'w'
-    <> long "watch"
-    <> metavar "N"
-    <> help "Measure and show memory every N seconds (N > 0)"
+  option positiveNum $
+    short 'w'
+      <> long "watch"
+      <> metavar "N"
+      <> help "Measure and show memory every N seconds (N > 0)"
 
 
 positiveNum :: (Read a, Ord a, Num a) => ReadM a
@@ -153,11 +161,11 @@ positiveNum =
 
 parsePrintOrder :: Parser PrintOrder
 parsePrintOrder =
-  option autoIgnoreCase
-    $ short 'b'
-    <> long "order-by"
-    <> metavar "< private | swap | shared | count >"
-    <> help "Orders the output by ascending values of the given field"
+  option autoIgnoreCase $
+    short 'b'
+      <> long "order-by"
+      <> metavar "< private | swap | shared | count >"
+      <> help "Orders the output by ascending values of the given field"
 
 
 -- | Determines the order in which @MemUsages@ in a report are printed out
@@ -169,13 +177,22 @@ data PrintOrder
   deriving (Eq, Show, Read, Generic)
 
 
+parseMinReported :: Parser Mem
+parseMinReported =
+  option (eitherReader $ fromReader memReader) $
+    short 'm'
+      <> long "min-reported"
+      <> metavar "<threshold>[K|M|G|T]iB, e.g 1.1KiB | 2MiB | 4.0GiB"
+      <> help "Specifies a minimum below which memory values are omitted"
+
+
 parseStyle :: Parser Style
 parseStyle =
-  option autoIgnoreCase
-    $ short 'y'
-    <> long "output-style"
-    <> metavar "< [normal] | csv >"
-    <> help (Text.unpack styleHelp)
+  option autoIgnoreCase $
+    short 'y'
+      <> long "output-style"
+      <> metavar "< [normal] | csv >"
+      <> help (Text.unpack styleHelp)
 
 
 styleHelp :: Text
@@ -207,5 +224,49 @@ autoOrNotAllowed = eitherReader $ readOrNotAllowed id
 
 readOrNotAllowed :: (Read a) => (String -> String) -> String -> Either String a
 readOrNotAllowed f x = case readEither $ f x of
-  Left _ -> Left $ "value '" ++ x ++ "' is not permitted"
+  Left _ignored -> Left $ "value '" ++ x ++ "' is not permitted"
   right -> right
+
+
+fromReader :: Reader a -> String -> Either String a
+fromReader reader = fmap fst . reader . Text.pack
+
+
+-- | Represents the power in memory quanity unit
+data Power = Ki | Mi | Gi | Ti
+  deriving
+    (Eq, Read, Show, Ord, Enum, Bounded, Generic)
+
+
+floatingFactor :: Power -> Double
+floatingFactor Ki = 1.0
+floatingFactor Mi = 1024.0
+floatingFactor Gi = 1024.0 ** 2
+floatingFactor Ti = 1024.0 ** 3
+
+
+powerReader :: Text -> Either String (Power, Text)
+powerReader x =
+  let (want, extra) = Text.splitAt 3 $ Text.stripStart x
+      go "Ki" = Right (Ki, extra)
+      go "Mi" = Right (Mi, extra)
+      go "Gi" = Right (Gi, extra)
+      go "Ti" = Right (Ti, extra)
+      go _other = Left "invalid Power"
+   in go $ Text.take 2 want
+
+
+-- | Represents an amount of memory
+data Mem = Mem !Power !Deci
+  deriving (Eq, Show, Ord, Generic)
+
+
+asFloat :: Mem -> Double
+asFloat (Mem pow x) = realToFrac x * floatingFactor pow
+
+
+memReader :: Text -> Either String (Mem, Text)
+memReader x = do
+  (num, rest) <- rational (Text.stripStart x)
+  (power, extra) <- powerReader rest
+  pure (Mem power num, extra)

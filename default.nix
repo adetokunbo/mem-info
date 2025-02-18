@@ -10,4 +10,9 @@ in
     src = ./.;
   };
   inherit (dev) compiler-nix-name index-state;
+  modules = [{
+      packages.mem-info.components.exes.printmem = {
+        dontStrip = false;
+      };
+  }];
 }

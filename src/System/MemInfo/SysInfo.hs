@@ -93,6 +93,7 @@ data ReportBud = ReportBud
   , rbHasSmaps :: !Bool
   , rbRamFlaws :: !(Maybe RamFlaw)
   , rbSwapFlaws :: !(Maybe SwapFlaw)
+  , rbProcRoot :: !FilePath
   }
   deriving (Eq, Show)
 
@@ -161,7 +162,7 @@ checkForFlaws bud = do
         } = bud
   (rbRamFlaws, rbSwapFlaws) <- case version of
     (2, 4, _patch) -> do
-      let memInfoPath = pidPath "meminfo" pid
+      let memInfoPath = pidPath (rbProcRoot bud) "meminfo" pid
           alt = (Just SomeSharedMem, Just NoSwap)
           best = (Just ExactForIsolatedMem, Just NoSwap)
           containsInact = Text.isInfixOf "Inact_"
@@ -190,13 +191,14 @@ Generates values for the other fields by inspecting the system
 
 The result is @Nothing@ only when the @KernelVersion@ cannot be determined
 -}
-mkReportBud :: NonEmpty ProcessID -> IO (Maybe ReportBud)
-mkReportBud rbPids = do
+mkReportBud :: FilePath -> NonEmpty ProcessID -> IO (Maybe ReportBud)
+mkReportBud rbProcRoot rbPids = do
   let firstPid = NE.head rbPids
-      smapsPath = pidPath "smaps" firstPid
+      smapsPath = pidPath rbProcRoot "smaps" firstPid
       hasPss = Text.isInfixOf "Pss:"
       hasSwapPss = Text.isInfixOf "SwapPss:"
       memtypes x = (hasPss x, hasSwapPss x)
+  _doesRootExist <- doesFileExist rbProcRoot
   rbHasSmaps <- doesFileExist smapsPath
   (rbHasPss, rbHasSwapPss) <- memtypes <$> readUtf8Text smapsPath
   readKernelVersion >>= \case
@@ -212,8 +214,9 @@ mkReportBud rbPids = do
             , rbHasSmaps
             , rbRamFlaws = Nothing
             , rbSwapFlaws = Nothing
+            , rbProcRoot
             }
 
 
-pidPath :: String -> ProcessID -> FilePath
-pidPath base pid = "/proc/" +| toInteger pid |+ "/" +| base |+ ""
+pidPath :: FilePath -> String -> ProcessID -> FilePath
+pidPath root base pid = "" +| root |+ "" +| toInteger pid |+ "/" +| base |+ ""

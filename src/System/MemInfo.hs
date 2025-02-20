@@ -129,7 +129,7 @@ printProcs' indexer bud cs = do
         , choiceStyle = style
         , choiceMinMemory = mem
         } = cs
-      chosenRoot = procRoot
+      chosenRoot = rbProcRoot bud
       style' = fromMaybe Normal style
       toList = filterLT mem . sortBy (byPrintOrder' reversed printOrder) . Map.toList
       printEachCmd = printMemUsages bud style' showSwap onlyTotal . toList
@@ -220,7 +220,7 @@ unfoldMemUsageAfter ::
   seconds ->
   ReportBud ->
   IO (Either [ProcessID] ((Map ProcName MemUsage, [ProcessID]), ReportBud))
-unfoldMemUsageAfter = unfoldMemUsageAfter' (nameFor procRoot) dropId
+unfoldMemUsageAfter delay bud = unfoldMemUsageAfter' (nameFor (rbProcRoot bud)) dropId delay bud
 
 
 -- | Like @'unfoldMemUsage'@ but computes the @'MemUsage's@ after a delay
@@ -265,7 +265,7 @@ unfoldMemUsage namer mkCmd bud = do
 -- | Load the @'MemUsage'@ of a program specified by its @ProcessID@
 readForOnePid :: ProcessID -> IO (Either NotRun (ProcName, MemUsage))
 readForOnePid pid = do
-  let mkBud' xs = mkReportBud xs <&> maybe (Left OddKernel) Right
+  let mkBud' xs = mkReportBud procRoot xs <&> maybe (Left OddKernel) Right
       noProc = NoProc pid
       fromMemUsage x = maybe (Left $ PidLost noProc) Right (Map.lookupMin x)
       andFromUsage = either (Left . PidLost) fromMemUsage
@@ -279,7 +279,7 @@ readForOnePid pid = do
 
 -- | Like @'readMemUsage''@ but uses the default 'ProcNamer' and 'Indexer'
 readMemUsage :: ReportBud -> IO (Either LostPid (Map ProcName MemUsage))
-readMemUsage = readMemUsage' (nameFor procRoot) dropId
+readMemUsage bud = readMemUsage' (nameFor $ rbProcRoot bud) dropId bud
 
 
 {- | Loads the @'MemUsage'@ specified by a @'ReportBud'@
@@ -305,17 +305,16 @@ readNameAndStats ::
   ReportBud ->
   ProcessID ->
   IO (Either LostPid (ProcessID, ProcName, ProcUsage))
-readNameAndStats = readNameAndStats' procRoot
+readNameAndStats = readNameAndStats'
 
 
 readNameAndStats' ::
-  ProcRoot ->
   ProcNamer ->
   ReportBud ->
   ProcessID ->
   IO (Either LostPid (ProcessID, ProcName, ProcUsage))
-readNameAndStats' root namer bud pid = do
-  let withProcRoot = flip runReaderT root
+readNameAndStats' namer bud pid = do
+  let withProcRoot = flip runReaderT $ rbProcRoot bud
   namer pid >>= \case
     Left e -> pure $ Left e
     Right name ->
@@ -342,7 +341,7 @@ verify cs = verify' procRoot (choicePidsToShow cs) >>= either (haltErr . fmtNotR
 
 verify' :: FilePath -> Maybe (NonEmpty ProcessID) -> IO (Either NotRun ReportBud)
 verify' root pidsMb = do
-  let mkBud' xs = mkReportBud xs <&> maybe (Left OddKernel) Right
+  let mkBud' xs = mkReportBud root xs <&> maybe (Left OddKernel) Right
       thenMkBud = either (pure . Left) mkBud'
   case pidsMb of
     Just pids -> checkAllExist root pids >>= thenMkBud

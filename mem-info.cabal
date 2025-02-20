@@ -51,6 +51,7 @@ library
     , filepath              >=1.4.2  && <1.6
     , fmt                   >=0.6.3  && <0.8
     , hashable              >=1.4.2  && <1.6
+    , mtl                   >=2.0 && <2.3 || > 2.3 && <2.5
     , optparse-applicative  >=0.18.1 && <0.19
     , text                  >=1.2.3  && <2.2
     , unix                  >=2.7.2  && <2.9

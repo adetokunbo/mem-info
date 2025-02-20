@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
@@ -54,6 +55,8 @@ module System.MemInfo (
   AsCmdName (..),
 ) where
 
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader (MonadReader (ask), runReaderT)
 import Data.Bifunctor (Bifunctor (..))
 import Data.Functor ((<&>))
 import Data.List (sortBy)
@@ -126,6 +129,7 @@ printProcs' indexer bud cs = do
         , choiceStyle = style
         , choiceMinMemory = mem
         } = cs
+      chosenRoot = procRoot
       style' = fromMaybe Normal style
       toList = filterLT mem . sortBy (byPrintOrder' reversed printOrder) . Map.toList
       printEachCmd = printMemUsages bud style' showSwap onlyTotal . toList
@@ -133,9 +137,9 @@ printProcs' indexer bud cs = do
       showTotal = if onlyTotal then printTheTotal else printEachCmd
       namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
   case watchSecsMb of
-    Nothing -> readMemUsage' namer indexer bud >>= either haltLostPid showTotal
+    Nothing -> readMemUsage' (namer chosenRoot) indexer bud >>= either haltLostPid showTotal
     (Just spanSecs) -> do
-      let unfold = unfoldMemUsageAfter' namer indexer spanSecs
+      let unfold = unfoldMemUsageAfter' (namer chosenRoot) indexer spanSecs
       loopPrintMemUsages unfold bud showTotal
 
 
@@ -216,7 +220,7 @@ unfoldMemUsageAfter ::
   seconds ->
   ReportBud ->
   IO (Either [ProcessID] ((Map ProcName MemUsage, [ProcessID]), ReportBud))
-unfoldMemUsageAfter = unfoldMemUsageAfter' nameFor dropId
+unfoldMemUsageAfter = unfoldMemUsageAfter' (nameFor procRoot) dropId
 
 
 -- | Like @'unfoldMemUsage'@ but computes the @'MemUsage's@ after a delay
@@ -265,7 +269,7 @@ readForOnePid pid = do
       noProc = NoProc pid
       fromMemUsage x = maybe (Left $ PidLost noProc) Right (Map.lookupMin x)
       andFromUsage = either (Left . PidLost) fromMemUsage
-  nameFor pid >>= \case
+  nameFor procRoot pid >>= \case
     Left err -> pure $ Left $ PidLost err
     Right _ ->
       mkBud' (pid :| []) >>= \case
@@ -275,7 +279,7 @@ readForOnePid pid = do
 
 -- | Like @'readMemUsage''@ but uses the default 'ProcNamer' and 'Indexer'
 readMemUsage :: ReportBud -> IO (Either LostPid (Map ProcName MemUsage))
-readMemUsage = readMemUsage' nameFor dropId
+readMemUsage = readMemUsage' (nameFor procRoot) dropId
 
 
 {- | Loads the @'MemUsage'@ specified by a @'ReportBud'@
@@ -301,13 +305,24 @@ readNameAndStats ::
   ReportBud ->
   ProcessID ->
   IO (Either LostPid (ProcessID, ProcName, ProcUsage))
-readNameAndStats namer bud pid = do
+readNameAndStats = readNameAndStats' procRoot
+
+
+readNameAndStats' ::
+  ProcRoot ->
+  ProcNamer ->
+  ReportBud ->
+  ProcessID ->
+  IO (Either LostPid (ProcessID, ProcName, ProcUsage))
+readNameAndStats' root namer bud pid = do
+  let withProcRoot = flip runReaderT root
   namer pid >>= \case
     Left e -> pure $ Left e
     Right name ->
-      readMemStats bud pid >>= \case
-        Left e -> pure $ Left e
-        Right stats -> pure $ Right (pid, name, stats)
+      withProcRoot $
+        readMemStats bud pid >>= \case
+          Left e -> pure $ Left e
+          Right stats -> pure $ Right (pid, name, stats)
 
 
 reportFlaws :: ReportBud -> Bool -> Bool -> IO ()
@@ -322,53 +337,60 @@ reportFlaws bud showSwap onlyTotal = do
 
 
 verify :: Choices -> IO ReportBud
-verify cs = verify' (choicePidsToShow cs) >>= either (haltErr . fmtNotRun) pure
+verify cs = verify' procRoot (choicePidsToShow cs) >>= either (haltErr . fmtNotRun) pure
 
 
-verify' :: Maybe (NonEmpty ProcessID) -> IO (Either NotRun ReportBud)
-verify' pidsMb = do
+verify' :: FilePath -> Maybe (NonEmpty ProcessID) -> IO (Either NotRun ReportBud)
+verify' root pidsMb = do
   let mkBud' xs = mkReportBud xs <&> maybe (Left OddKernel) Right
       thenMkBud = either (pure . Left) mkBud'
   case pidsMb of
-    Just pids -> checkAllExist pids >>= thenMkBud
-    Nothing -> allKnownProcs >>= thenMkBud
+    Just pids -> checkAllExist root pids >>= thenMkBud
+    Nothing -> allKnownProcs root >>= thenMkBud
 
 
-procRoot :: String
+procRoot :: FilePath
 procRoot = "/proc/"
 
 
-pidPath :: String -> ProcessID -> FilePath
-pidPath base pid = "" +| procRoot |++| toInteger pid |+ "/" +| base |+ ""
+-- | The root of the process file hierarchy
+type ProcRoot = FilePath
+
+
+pidPath :: (MonadReader ProcRoot m) => String -> ProcessID -> m FilePath
+pidPath base pid = ask >>= \root -> pure $ "" +| root |++| toInteger pid |+ "/" +| base |+ ""
 
 
 {- | pidExists returns false for any ProcessID that does not exist or cannot
 be accessed
 -}
-pidExeExists :: ProcessID -> IO Bool
-pidExeExists = fmap (either (const False) (const True)) . exeInfo
+pidExeExists :: FilePath -> ProcessID -> IO Bool
+pidExeExists root pid = do
+  result <- flip runReaderT root $ exeInfo pid
+  pure $ either (const False) (const True) result
 
 
 -- | Obtain the @ProcName@ as the full cmd path
-nameAsFullCmd :: ProcNamer
-nameAsFullCmd pid = do
-  let
-    err = NoCmdLine pid
-    recombine = Text.intercalate " " . NE.toList
-    orLostPid = maybe (Left err) (Right . recombine)
-  readCmdlinePath pid >>= (pure . orLostPid) . parseCmdline
+nameAsFullCmd :: ProcNamer2
+nameAsFullCmd root pid = do
+  let withProcRoot = flip runReaderT root
+      err = NoCmdLine pid
+      recombine = Text.intercalate " " . NE.toList
+      orLostPid = maybe (Left err) (Right . recombine)
+  withProcRoot (readCmdlinePath pid) >>= (pure . orLostPid) . parseCmdline
 
 
-readCmdlinePath :: ProcessID -> IO Text
-readCmdlinePath pid = readUtf8Text $ pidPath "cmdline" pid
+readCmdlinePath :: (MonadReader ProcRoot m, MonadIO m) => ProcessID -> m Text
+readCmdlinePath pid = pidPath "cmdline" pid >>= liftIO . readUtf8Text
 
 
 {- | Obtain the @ProcName@ by examining the path linked by
 __{proc_root}\/pid\/exe__
 -}
-nameFromExeOnly :: ProcNamer
-nameFromExeOnly pid = do
-  let pickSuffix = \case
+nameFromExeOnly :: ProcNamer2
+nameFromExeOnly root pid = do
+  let withProcRoot = flip runReaderT root
+      pickSuffix = \case
         Just (x :| _) -> do
           let addSuffix' b = x <> if b then " [updated]" else " [deleted]"
           Right . baseName . addSuffix' <$> exists x
@@ -376,7 +398,7 @@ nameFromExeOnly pid = do
         -- path, it's an error if it is
         Nothing -> pure $ Left $ NoCmdLine pid
 
-  exeInfo pid >>= \case
+  withProcRoot (exeInfo pid) >>= \case
     Left e -> pure $ Left e
     Right i | not $ eiDeleted i -> pure $ Right $ baseName $ eiOriginal i
     -- when the exe bud ends with (deleted), the version of the exe used to
@@ -387,30 +409,35 @@ nameFromExeOnly pid = do
       exists orig >>= \wasUpdated ->
         if wasUpdated
           then pure $ Right $ baseName $ "" +| orig |+ " [updated]"
-          else readCmdlinePath pid >>= pickSuffix . parseCmdline
+          else withProcRoot (readCmdlinePath pid) >>= pickSuffix . parseCmdline
 
 
 -- | Functions that obtain a process name given its @pid@
 type ProcNamer = ProcessID -> IO (Either LostPid ProcName)
 
 
+-- | Functions that obtain a process name given its @pid@
+type ProcNamer2 = ProcRoot -> ProcessID -> IO (Either LostPid ProcName)
+
+
 {- | Obtain the @ProcName@ by examining the path linked by
 __{proc_root}\/pid\/exe__ or its parent's name if that is a better match
 -}
-nameFor :: ProcNamer
-nameFor pid =
-  nameFromExeOnly pid
-    >>= either (pure . Left) (parentNameIfMatched pid)
+nameFor :: ProcNamer2
+nameFor root pid =
+  nameFromExeOnly root pid
+    >>= either (pure . Left) (parentNameIfMatched2 root pid)
 
 
-parentNameIfMatched :: ProcessID -> Text -> IO (Either LostPid ProcName)
-parentNameIfMatched pid candidate = do
+parentNameIfMatched2 :: FilePath -> ProcessID -> Text -> IO (Either LostPid ProcName)
+parentNameIfMatched2 root pid candidate = do
   let isMatch = flip Text.isPrefixOf candidate . siName
-  statusInfo pid >>= \case
+      withProcRoot = flip runReaderT root
+  withProcRoot (statusInfo pid) >>= \case
     Left err -> pure $ Left err
     Right si | isMatch si -> pure $ Right candidate
     Right si ->
-      nameFromExeOnly (siParent si) >>= \case
+      nameFromExeOnly root (siParent si) >>= \case
         Right n | n == candidate -> pure $ Right n
         _anyLostPid -> pure $ Right $ siName si
 
@@ -461,25 +488,31 @@ haltLostPid err = do
   exitFailure
 
 
-exeInfo :: ProcessID -> IO (Either LostPid ExeInfo)
+exeInfo :: (MonadReader ProcRoot m, MonadIO m) => ProcessID -> m (Either LostPid ExeInfo)
 exeInfo pid = do
-  let exePath = pidPath "exe" pid
-      handledErr e = isDoesNotExistError e || isPermissionError e
+  link <- pidPath "exe" pid
+  linkText <- liftIO $ getSymbolicLinkText pid link
+  pure $ fmap parseExeInfo linkText
+
+
+getSymbolicLinkText :: ProcessID -> FilePath -> IO (Either LostPid Text)
+getSymbolicLinkText pid link = do
+  let handledErr e = isDoesNotExistError e || isPermissionError e
       onIOE e = if handledErr e then pure (Left $ NoExeFile pid) else throwIO e
   handle onIOE $ do
-    Right . parseExeInfo . Text.pack <$> getSymbolicLinkTarget exePath
+    Right . Text.pack <$> getSymbolicLinkTarget link
 
 
 exists :: Text -> IO Bool
 exists = doesFileExist . Text.unpack
 
 
-statusInfo :: ProcessID -> IO (Either LostPid StatusInfo)
+statusInfo :: (MonadReader ProcRoot m, MonadIO m) => ProcessID -> m (Either LostPid StatusInfo)
 statusInfo pid = do
-  let statusPath = pidPath "status" pid
-      fromBadStatus NoCmd = NoStatusCmd pid
+  let fromBadStatus NoCmd = NoStatusCmd pid
       fromBadStatus NoParent = NoStatusParent pid
-  first fromBadStatus . parseStatusInfo <$> readUtf8Text statusPath
+  statusPath <- pidPath "status" pid
+  first fromBadStatus . parseStatusInfo <$> liftIO (readUtf8Text statusPath)
 
 
 parseCmdline :: Text -> Maybe (NonEmpty Text)
@@ -488,50 +521,55 @@ parseCmdline =
    in nonEmpty . split'
 
 
-nonExisting :: NonEmpty ProcessID -> IO [ProcessID]
-nonExisting = filterM (fmap not . pidExeExists) . NE.toList
+nonExisting :: FilePath -> NonEmpty ProcessID -> IO [ProcessID]
+nonExisting root = filterM (fmap not . pidExeExists root) . NE.toList
 
 
-checkAllExist :: NonEmpty ProcessID -> IO (Either NotRun (NonEmpty ProcessID))
-checkAllExist pids =
-  nonExisting pids >>= \case
+checkAllExist :: FilePath -> NonEmpty ProcessID -> IO (Either NotRun (NonEmpty ProcessID))
+checkAllExist root pids =
+  nonExisting root pids >>= \case
     [] -> pure $ Right pids
     x : xs -> pure $ Left $ MissingPids $ x :| xs
 
 
-allKnownProcs :: IO (Either NotRun (NonEmpty ProcessID))
-allKnownProcs =
+allKnownProcs :: FilePath -> IO (Either NotRun (NonEmpty ProcessID))
+allKnownProcs root =
   let readIdsMaybe = fmap (mapMaybe readMaybe)
-      readProcessIDs = readIdsMaybe (listDirectory procRoot)
-      orNoPids = maybe (Left NoRecords) Right . nonEmpty
-   in readProcessIDs >>= filterM pidExeExists >>= pure . orNoPids
+      readProcessIDs = readIdsMaybe (listDirectory root)
+      orNoPids = pure . maybe (Left NoRecords) Right . nonEmpty
+   in readProcessIDs >>= filterM (pidExeExists root) >>= orNoPids
 
 
 baseName :: Text -> Text
 baseName = Text.pack . takeBaseName . Text.unpack
 
 
-readMemStats :: ReportBud -> ProcessID -> IO (Either LostPid ProcUsage)
+readMemStats ::
+  (MonadReader ProcRoot m, MonadIO m) =>
+  ReportBud ->
+  ProcessID ->
+  m (Either LostPid ProcUsage)
 readMemStats bud pid = do
-  statmExists <- doesFileExist $ pidPath "statm" pid
+  statmPath <- pidPath "statm" pid
+  statmExists <- liftIO $ doesFileExist statmPath
   if
     | rbHasSmaps bud -> Right . parseFromSmap <$> readSmaps pid
     | statmExists -> do
-        let readStatm' = readUtf8Text $ pidPath "statm" pid
+        let readStatm' = liftIO $ readUtf8Text statmPath
             orLostPid = maybe (Left $ BadStatm pid) Right
         orLostPid . parseFromStatm (rbKernel bud) <$> readStatm'
     | otherwise -> pure $ Left $ NoProc pid
 
 
-readSmaps :: ProcessID -> IO Text
+readSmaps :: (MonadReader ProcRoot m, MonadIO m) => ProcessID -> m Text
 readSmaps pid = do
-  let smapPath = pidPath "smaps" pid
-      rollupPath = pidPath "smaps_rollup" pid
-  hasSmaps <- doesFileExist smapPath
-  hasRollup <- doesFileExist rollupPath
+  smapPath <- pidPath "smaps" pid
+  rollupPath <- pidPath "smaps_rollup" pid
+  hasSmaps <- liftIO $ doesFileExist smapPath
+  hasRollup <- liftIO $ doesFileExist rollupPath
   if
-    | hasRollup -> readUtf8Text rollupPath
-    | hasSmaps -> readUtf8Text smapPath
+    | hasRollup -> liftIO $ readUtf8Text rollupPath
+    | hasSmaps -> liftIO $ readUtf8Text smapPath
     | otherwise -> pure Text.empty
 
 

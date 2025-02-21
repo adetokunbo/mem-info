@@ -58,12 +58,12 @@ fickleSharing k = k >= (2, 6, 1) && k <= (2, 6, 9)
 
 
 -- | Determines the version of the Linux kernel on the current system.
-readKernelVersion :: IO (Maybe KernelVersion)
-readKernelVersion = parseKernelVersion <$> Text.readFile kernelVersionPath
+readKernelVersion :: FilePath -> IO (Maybe KernelVersion)
+readKernelVersion = fmap parseKernelVersion . Text.readFile . kernelVersionPath
 
 
-kernelVersionPath :: String
-kernelVersionPath = "/proc/sys/kernel/osrelease"
+kernelVersionPath :: FilePath -> FilePath
+kernelVersionPath root = "" +| root |+ "/sys/kernel/osrelease"
 
 
 -- | Parses @Text@ into a @'KernelVersion'@
@@ -201,7 +201,7 @@ mkReportBud rbProcRoot rbPids = do
   _doesRootExist <- doesFileExist rbProcRoot
   rbHasSmaps <- doesFileExist smapsPath
   (rbHasPss, rbHasSwapPss) <- memtypes <$> readUtf8Text smapsPath
-  readKernelVersion >>= \case
+  readKernelVersion rbProcRoot >>= \case
     Nothing -> pure Nothing
     Just rbKernel ->
       fmap Just $

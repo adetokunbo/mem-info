@@ -23,6 +23,7 @@ module System.MemInfo (
 
   -- * Read /MemUsage/
   readForOnePid,
+  readForOnePid',
   readMemUsage',
   readMemUsage,
   NotRun (..),
@@ -262,14 +263,26 @@ unfoldMemUsage namer mkCmd bud = do
   nextState <$> foldlEitherM' (readNameAndStats namer bud) pids
 
 
--- | Load the @'MemUsage'@ of a program specified by its @ProcessID@
+{- | Like 'readForOnePid', but assumes the process file hierarchy
+root is the linux default
+-}
 readForOnePid :: ProcessID -> IO (Either NotRun (ProcName, MemUsage))
-readForOnePid pid = do
-  let mkBud' xs = mkReportBud procRoot xs <&> maybe (Left OddKernel) Right
+readForOnePid = readForOnePid' procRoot
+
+
+-- | Load the @'MemUsage'@ of a program specified by its @ProcessID@
+readForOnePid' ::
+  ProcRoot ->
+  -- | the root of the process file system; usually @/proc@
+  ProcessID ->
+  -- | the ID of a valid process
+  IO (Either NotRun (ProcName, MemUsage))
+readForOnePid' root pid = do
+  let mkBud' xs = mkReportBud root xs <&> maybe (Left OddKernel) Right
       noProc = NoProc pid
       fromMemUsage x = maybe (Left $ PidLost noProc) Right (Map.lookupMin x)
       andFromUsage = either (Left . PidLost) fromMemUsage
-  nameFor procRoot pid >>= \case
+  nameFor root pid >>= \case
     Left err -> pure $ Left $ PidLost err
     Right _ ->
       mkBud' (pid :| []) >>= \case
@@ -286,7 +299,7 @@ readMemUsage bud = readMemUsage' (nameFor $ rbProcRoot bud) dropId bud
 
 Fails if
 
-- the system does not have the expected /proc filesystem memory records
+- the system does not have the expected process filesystem memory records
 - any of the processes specified by @'ReportBud'@ are missing or inaccessible
 -}
 readMemUsage' ::

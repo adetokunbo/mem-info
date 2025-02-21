@@ -218,5 +218,5 @@ mkReportBud rbProcRoot rbPids = do
             }
 
 
-pidPath :: FilePath -> String -> ProcessID -> FilePath
-pidPath root base pid = "" +| root |+ "" +| toInteger pid |+ "/" +| base |+ ""
+pidPath :: FilePath -> FilePath -> ProcessID -> FilePath
+pidPath root base pid = "" +| root |+ "/" +| toInteger pid |+ "/" +| base |+ ""

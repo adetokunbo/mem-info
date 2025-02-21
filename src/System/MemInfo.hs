@@ -71,7 +71,6 @@ import Fmt (
   listF,
   (+|),
   (|+),
-  (|++|),
  )
 import System.Exit (exitFailure)
 import System.MemInfo.Choices (
@@ -362,15 +361,15 @@ verify' root pidsMb = do
 
 
 procRoot :: FilePath
-procRoot = "/proc/"
+procRoot = "/proc"
 
 
 -- | The root of the process file hierarchy
 type ProcRoot = FilePath
 
 
-pidPath :: (MonadReader ProcRoot m) => String -> ProcessID -> m FilePath
-pidPath base pid = ask >>= \root -> pure $ "" +| root |++| toInteger pid |+ "/" +| base |+ ""
+pidPath :: (MonadReader ProcRoot m) => FilePath -> ProcessID -> m FilePath
+pidPath base pid = ask >>= \root -> pure $ "" +| root |+ "/" +| toInteger pid |+ "/" +| base |+ ""
 
 
 {- | pidExists returns false for any ProcessID that does not exist or cannot

@@ -189,7 +189,10 @@ checkForFlaws bud = do
 
 Generates values for the other fields by inspecting the system
 
-The result is @Nothing@ only when the @KernelVersion@ cannot be determined
+The result is @Nothing@ when either
+
+- the process root is not accessible
+- the @KernelVersion@ cannot be determined
 -}
 mkReportBud :: FilePath -> NonEmpty ProcessID -> IO (Maybe ReportBud)
 mkReportBud rbProcRoot rbPids = do
@@ -198,25 +201,38 @@ mkReportBud rbProcRoot rbPids = do
       hasPss = Text.isInfixOf "Pss:"
       hasSwapPss = Text.isInfixOf "SwapPss:"
       memtypes x = (hasPss x, hasSwapPss x)
-  _doesRootExist <- doesFileExist rbProcRoot
-  rbHasSmaps <- doesFileExist smapsPath
-  (rbHasPss, rbHasSwapPss) <- memtypes <$> readUtf8Text smapsPath
-  readKernelVersion rbProcRoot >>= \case
-    Nothing -> pure Nothing
-    Just rbKernel ->
-      fmap Just $
-        checkForFlaws $
-          ReportBud
-            { rbPids
-            , rbKernel
-            , rbHasPss
-            , rbHasSwapPss
-            , rbHasSmaps
-            , rbRamFlaws = Nothing
-            , rbSwapFlaws = Nothing
-            , rbProcRoot
-            }
+  rootAccessible <- canAccessRoot rbProcRoot
+  if not rootAccessible
+    then pure Nothing
+    else do
+      rbHasSmaps <- doesFileExist smapsPath
+      (rbHasPss, rbHasSwapPss) <- memtypes <$> readUtf8Text smapsPath
+      readKernelVersion rbProcRoot >>= \case
+        Nothing -> pure Nothing
+        Just rbKernel ->
+          fmap Just $
+            checkForFlaws $
+              ReportBud
+                { rbPids
+                , rbKernel
+                , rbHasPss
+                , rbHasSwapPss
+                , rbHasSmaps
+                , rbRamFlaws = Nothing
+                , rbSwapFlaws = Nothing
+                , rbProcRoot
+                }
 
 
 pidPath :: FilePath -> FilePath -> ProcessID -> FilePath
 pidPath root base pid = "" +| root |+ "/" +| toInteger pid |+ "/" +| base |+ ""
+
+
+canAccessRoot :: FilePath -> IO Bool
+canAccessRoot root = do
+  doesRootExist <- doesDirectoryExist root
+  if not doesRootExist
+    then pure False
+    else do
+      p <- getPermissions root
+      pure $ readable p && searchable p

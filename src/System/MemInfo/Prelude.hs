@@ -51,9 +51,13 @@ import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
 import Numeric.Natural (Natural)
 import System.Directory (
+  doesDirectoryExist,
   doesFileExist,
+  getPermissions,
   getSymbolicLinkTarget,
   listDirectory,
+  readable,
+  searchable,
  )
 import System.FilePath (takeBaseName)
 import System.IO (stderr)

@@ -152,8 +152,7 @@ fmtSwapFlaws ExactForIsolatedSwap =
 -}
 checkForFlaws :: ReportBud -> IO ReportBud
 checkForFlaws bud = do
-  let pid = NE.head $ rbPids bud
-      version = rbKernel bud
+  let version = rbKernel bud
       fickleShared = fickleSharing version
       ReportBud
         { rbHasPss = hasPss
@@ -162,7 +161,7 @@ checkForFlaws bud = do
         } = bud
   (rbRamFlaws, rbSwapFlaws) <- case version of
     (2, 4, _patch) -> do
-      let memInfoPath = pidPath (rbProcRoot bud) "meminfo" pid
+      let memInfoPath = meminfoPathOf (rbProcRoot bud)
           alt = (Just SomeSharedMem, Just NoSwap)
           best = (Just ExactForIsolatedMem, Just NoSwap)
           containsInact = Text.isInfixOf "Inact_"
@@ -226,6 +225,10 @@ mkReportBud rbProcRoot rbPids = do
 
 pidPath :: FilePath -> FilePath -> ProcessID -> FilePath
 pidPath root base pid = "" +| root |+ "/" +| toInteger pid |+ "/" +| base |+ ""
+
+
+meminfoPathOf :: FilePath -> FilePath
+meminfoPathOf root = "" +| root |+ "/meminfo"
 
 
 canAccessRoot :: FilePath -> IO Bool

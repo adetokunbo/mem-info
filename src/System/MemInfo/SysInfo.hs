@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -36,6 +37,7 @@ module System.MemInfo.SysInfo (
   fickleSharing,
 ) where
 
+import Control.Monad ((>=>))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
@@ -152,34 +154,30 @@ fmtSwapFlaws ExactForIsolatedSwap =
 -}
 checkForFlaws :: ReportBud -> IO ReportBud
 checkForFlaws bud = do
-  let version = rbKernel bud
-      fickleShared = fickleSharing version
+  let memInfoPath = meminfoPathOf (rbProcRoot bud)
       ReportBud
         { rbHasPss = hasPss
         , rbHasSmaps = hasSmaps
         , rbHasSwapPss = hasSwapPss
+        , rbKernel = version
         } = bud
   (rbRamFlaws, rbSwapFlaws) <- case version of
     (2, 4, _patch) -> do
-      let memInfoPath = meminfoPathOf (rbProcRoot bud)
-          alt = (Just SomeSharedMem, Just NoSwap)
-          best = (Just ExactForIsolatedMem, Just NoSwap)
-          containsInact = Text.isInfixOf "Inact_"
-          checkInact x = if containsInact x then best else alt
-      doesFileExist memInfoPath >>= \hasMemInfo ->
-        if hasMemInfo
-          then pure alt
-          else checkInact <$> readUtf8Text memInfoPath
+      let hasInact = Text.isInfixOf "Inact_" <$> readUtf8Text memInfoPath
+          andHasInact x = if x then hasInact else pure False
+          memInfoMem x = if x then SomeSharedMem else ExactForIsolatedMem
+          mkFlawPair x = (Just $ memInfoMem x, Just NoSwap)
+          isInactPresent = doesFileExist >=> andHasInact
+      mkFlawPair <$> isInactPresent memInfoPath
     (2, 6, _patch) -> do
-      let withSmaps = if hasPss then best else alt
-          alt = (Just ExactForIsolatedMem, Just ExactForIsolatedSwap)
-          best = (Nothing, Just ExactForIsolatedSwap)
-          withNoSmaps = Just $ if fickleShared then NoSharedMem else SomeSharedMem
-      pure $ if hasSmaps then withSmaps else (withNoSmaps, Just NoSwap)
+      pure $
+        if
+          | hasSmaps && hasPss -> (Nothing, Just ExactForIsolatedSwap)
+          | hasSmaps -> (Just ExactForIsolatedMem, Just ExactForIsolatedSwap)
+          | fickleSharing version -> (Just NoSharedMem, Just NoSwap)
+          | otherwise -> (Just SomeSharedMem, Just NoSwap)
     (major, _minor, _patch) | major > 2 && hasSmaps -> do
-      let alt = (Nothing, Just ExactForIsolatedSwap)
-          best = (Nothing, Nothing)
-      pure $ if hasSwapPss then best else alt
+      pure (Nothing, if hasSwapPss then Nothing else Just ExactForIsolatedSwap)
     _other -> pure (Just ExactForIsolatedMem, Just NoSwap)
   pure $ bud {rbRamFlaws, rbSwapFlaws}
 

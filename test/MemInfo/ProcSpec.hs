@@ -11,6 +11,7 @@ module MemInfo.ProcSpec (
   spec,
   genBaseSmap,
   genSmapLine,
+  genAppendSwapPss,
 ) where
 
 import Data.Hashable (hash)
@@ -188,22 +189,28 @@ genSmapLine prefix = do
 
 
 genSmap :: Gen (ProcUsage, Text)
-genSmap = oneof [genBaseSmap, genWithSwapPss, genWithPss]
+genSmap = oneof [genBaseSmap, genWithSwapPss, genWithPss, genWithPss >>= genAppendSwapPss]
 
 
 genWithSwapPss :: Gen (ProcUsage, Text)
-genWithSwapPss = do
-  (pp, without) <- genBaseSmap
+genWithSwapPss = genBaseSmap >>= genAppendSwapPss
+
+
+genAppendSwapPss :: (ProcUsage, Text) -> Gen (ProcUsage, Text)
+genAppendSwapPss (pp, initial) = do
   (swapPss, txt) <- genSmapLine "SwapPss"
-  let content = without <> "\n" <> txt
+  let content = initial <> "\n" <> txt
   pure (pp {puSwap = swapPss, puMemId = hash content}, content)
 
 
 genWithPss :: Gen (ProcUsage, Text)
-genWithPss = do
-  (pp, without, puPrivateHuge) <- genBaseSmap'
+genWithPss = genBaseSmap' >>= genAppendPss
+
+
+genAppendPss :: (ProcUsage, Text, Int) -> Gen (ProcUsage, Text)
+genAppendPss (pp, initial, puPrivateHuge) = do
   (pss, txt) <- genSmapLine "Pss"
-  let content = without <> "\n" <> txt
+  let content = initial <> "\n" <> txt
       newShared = pss - (puPrivate pp - puPrivateHuge)
   pure (pp {puShared = newShared, puMemId = hash content}, content)
 

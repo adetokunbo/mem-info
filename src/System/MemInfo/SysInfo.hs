@@ -203,7 +203,10 @@ mkReportBud rbProcRoot rbPids = do
     then pure Nothing
     else do
       rbHasSmaps <- doesFileExist smapsPath
-      (rbHasPss, rbHasSwapPss) <- memtypes <$> readUtf8Text smapsPath
+      (rbHasPss, rbHasSwapPss) <-
+        if rbHasSmaps
+          then memtypes <$> readUtf8Text smapsPath
+          else pure (False, False)
       readKernelVersion rbProcRoot >>= \case
         Nothing -> pure Nothing
         Just rbKernel ->

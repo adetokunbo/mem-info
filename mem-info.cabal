@@ -77,6 +77,8 @@ test-suite test
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N -Wall -fwarn-tabs
   build-depends:
     , base
+    , filepath
+    , directory
     , fmt
     , genvalidity
     , genvalidity-hspec
@@ -87,6 +89,7 @@ test-suite test
     , optparse-applicative  >=0.18.1 && <0.19
     , QuickCheck
     , text
+    , temporary             >= 1.2 && < 1.4
     , unix
 
 -- printmem is the printmem command

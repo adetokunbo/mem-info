@@ -7,7 +7,11 @@ Copyright   : (c) 2023 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 -}
-module MemInfo.ProcSpec (spec) where
+module MemInfo.ProcSpec (
+  spec,
+  genBaseSmap,
+  genSmapLine,
+) where
 
 import Data.Hashable (hash)
 import Data.Maybe (isNothing)

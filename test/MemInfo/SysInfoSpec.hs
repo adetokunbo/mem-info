@@ -9,6 +9,7 @@ SPDX-License-Identifier: BSD3
 -}
 module MemInfo.SysInfoSpec (spec) where
 
+import Control.Monad (when)
 import Data.GenValidity (GenValid (..))
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Text (Text)
@@ -17,7 +18,7 @@ import qualified Data.Text.IO as Text
 import Data.Word (Word16, Word8)
 import Fmt (build, fmt, (+|), (|+))
 import MemInfo.OrphanInstances ()
-import MemInfo.ProcSpec (genSmapLine)
+import MemInfo.ProcSpec (genBaseSmap, genSmapLine)
 import System.Directory (createDirectoryIfMissing, listDirectory, removePathForcibly)
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -31,7 +32,7 @@ import System.MemInfo.SysInfo (
  )
 import Test.Hspec
 import Test.QuickCheck
-import Test.QuickCheck.Monadic (assert, monadicIO, pick, run)
+import Test.QuickCheck.Monadic (assert, forAllM, monadicIO, pick, run)
 
 
 spec :: Spec
@@ -41,18 +42,25 @@ spec = describe "module System.MemInfo.SysInfo" $ do
   mkReportBudSpec
 
 
-usingTmp :: (FilePath -> IO a) -> IO a
-usingTmp = withSystemTempDirectory "procSpec"
+useTmp :: (FilePath -> IO a) -> IO a
+useTmp = withSystemTempDirectory "mem-info-sysinfo"
 
 
 mkReportBudSpec :: Spec
 mkReportBudSpec = do
-  describe "mkReportBud" $ around usingTmp $ do
+  describe "mkReportBud" $ around useTmp $ do
     context "when the kernel is 2.4.x" $ do
       context "and there is no Inact_ ram" $ do
-        it "generate a ReportBud" prop_NonInactRamFlawOn24Kernel
+        it "generates the expected ReportBud" prop_NonInactRamFlawOn24Kernel
       context "and there is Inact_ ram" $ do
-        it "generate a ReportBud" prop_InactRamFlowOn24Kernel
+        it "generates the expected ReportBud" prop_InactRamFlowOn24Kernel
+    context "when the kernel is earlier than 2.4" $ do
+      it "generates the expected ReportBud" prop_With22Kernel
+    context "when the kernel is later than 3.x" $ do
+      context "and there are smap files" $ do
+        it "generates the expected ReportBud" $ prop_WithAfter3xKernel True
+      context "and there are no smap files" $ do
+        it "generates the expected ReportBud" $ prop_WithAfter3xKernel False
 
 
 prop_roundtripKernelVersion :: Property
@@ -103,6 +111,32 @@ fromSingle = do
   pure ((fromIntegral x, 0, 0), fmt $ build x)
 
 
+prop_WithAfter3xKernel :: Bool -> FilePath -> Property
+prop_WithAfter3xKernel hasSmaps root = monadicIO $ do
+  let withAfter3xFlaws x =
+        x
+          { rbRamFlaws = if hasSmaps then Nothing else Just ExactForIsolatedMem
+          , rbSwapFlaws = Just $ if hasSmaps then ExactForIsolatedSwap else NoSwap
+          , rbHasSmaps = hasSmaps
+          }
+      budGen = genExpectedBud withAfter3xFlaws genAfter3xKernel root
+  forAllM budGen $ \(thePid, version, want) -> do
+    (_ignored, smapsTxt) <- pick genBaseSmap
+    bud <- run $ do
+      initProcDir root version
+      when hasSmaps $
+        writeRootedFile root ("" +| thePid |+ "/smaps") smapsTxt
+      mkReportBud root (fromIntegral thePid :| [])
+    assert (bud == Just want)
+
+
+genAfter3xKernel :: Gen KernelVersion
+genAfter3xKernel = do
+  patch <- genValid
+  minor <- genValid
+  pure (3, minor, patch)
+
+
 prop_NonInactRamFlawOn24Kernel :: FilePath -> Property
 prop_NonInactRamFlawOn24Kernel = prop_With24Kernel True
 
@@ -132,10 +166,6 @@ prop_With24Kernel hasInactRam root = monadicIO $ do
   assert (bud == Just want)
 
 
-genValidProcId :: Gen Word16
-genValidProcId = genValid `suchThat` (> 1)
-
-
 gen24Kernel :: Gen KernelVersion
 gen24Kernel = do
   patch <- genValid
@@ -152,6 +182,38 @@ genMemInfoLines hasInact = do
   let baselines = [memTotalTxt, memFreeTxt, buffersTxt]
       ls = if hasInact then baselines <> [inactTxt] else baselines
   pure $ Text.unlines ls
+
+
+prop_With22Kernel :: FilePath -> Property
+prop_With22Kernel root = monadicIO $ do
+  let with22Flaws x =
+        x
+          { rbRamFlaws = Just ExactForIsolatedMem
+          , rbSwapFlaws = Just NoSwap
+          }
+  (thePid, version, want) <- pick $ genExpectedBud with22Flaws gen22Kernel root
+  bud <- run $ do
+    initProcDir root version
+    mkReportBud root (fromIntegral thePid :| [])
+  assert (bud == Just want)
+
+
+gen22Kernel :: Gen KernelVersion
+gen22Kernel = do
+  patch <- genValid
+  pure (2, 2, patch)
+
+
+genExpectedBud ::
+  (ReportBud -> ReportBud) -> Gen KernelVersion -> FilePath -> Gen (Word16, KernelVersion, ReportBud)
+genExpectedBud changeBud genKernel root = do
+  thePid <- genValidProcId
+  version <- genKernel
+  pure (thePid, version, changeBud $ expectedBud thePid root version)
+
+
+genValidProcId :: Gen Word16
+genValidProcId = genValid `suchThat` (> 1)
 
 
 expectedBud :: Word16 -> FilePath -> KernelVersion -> ReportBud

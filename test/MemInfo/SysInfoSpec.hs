@@ -18,7 +18,7 @@ import qualified Data.Text.IO as Text
 import Data.Word (Word16, Word8)
 import Fmt (build, fmt, (+|), (|+))
 import MemInfo.OrphanInstances ()
-import MemInfo.ProcSpec (genBaseSmap, genSmapLine)
+import MemInfo.ProcSpec (genBaseSmap, genSmapLine, genWithPss)
 import System.Directory (createDirectoryIfMissing, listDirectory, removePathForcibly)
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -56,6 +56,15 @@ mkReportBudSpec = do
         it "generates the expected ReportBud" (prop_With24Kernel False)
     context "when the kernel is earlier than 2.4" $ do
       it "generates the expected ReportBud" prop_With22Kernel
+    context "when the kernel is a special 2.6 kernel" $ do
+      it "generates the expected ReportBud" prop_WithSpecial26Kernel
+    context "when the kernel is a later 2.6 kernel with no smap support" $ do
+      it "generates the expected ReportBud" prop_WithNoSmap26Kernel
+    context "when the kernel is a later 2.6 kernel with smap support" $ do
+      context "and there are smap files but no Pss" $ do
+        it "generates the expected ReportBud" $ prop_WithSmaps26Kernel False
+      context "and there are smap files but with Pss" $ do
+        it "generates the expected ReportBud" $ prop_WithSmaps26Kernel True
     context "when the kernel is later than 3.x" $ do
       context "and there are smap files" $ do
         it "generates the expected ReportBud" $ prop_WithAfter3xKernel True
@@ -112,27 +121,27 @@ fromSingle = do
 
 
 prop_WithAfter3xKernel :: Bool -> FilePath -> Property
-prop_WithAfter3xKernel hasSmaps root = monadicIO $ do
-  let withAfter3xFlaws x =
+prop_WithAfter3xKernel hasPss root = monadicIO $ do
+  let withFlaws x =
         x
-          { rbRamFlaws = if hasSmaps then Nothing else Just ExactForIsolatedMem
-          , rbSwapFlaws = Just $ if hasSmaps then ExactForIsolatedSwap else NoSwap
-          , rbHasSmaps = hasSmaps
+          { rbRamFlaws = if hasPss then Nothing else Just ExactForIsolatedMem
+          , rbSwapFlaws = Just $ if hasPss then ExactForIsolatedSwap else NoSwap
+          , rbHasSmaps = hasPss
           }
       writeSmaps txt thePid =
-        when hasSmaps $ writeRootedFile root ("" +| thePid |+ "/smaps") txt
+        when hasPss $ writeRootedFile root ("" +| thePid |+ "/smaps") txt
       genKernel = do
         patch <- genValid
         minor <- genValid
         pure (3, minor, patch)
 
   (_ignored, smapsTxt) <- pick genBaseSmap
-  verifyMkReportBud root withAfter3xFlaws genKernel $ writeSmaps smapsTxt
+  verifyMkReportBud root withFlaws genKernel $ writeSmaps smapsTxt
 
 
 prop_With24Kernel :: Bool -> FilePath -> Property
 prop_With24Kernel hasInactRam root = monadicIO $ do
-  let with24Flaws x =
+  let withFlaws x =
         x
           { rbRamFlaws = Just $ if hasInactRam then SomeSharedMem else ExactForIsolatedMem
           , rbSwapFlaws = Just NoSwap
@@ -143,7 +152,55 @@ prop_With24Kernel hasInactRam root = monadicIO $ do
       writeMemInfo txt _unused = writeRootedFile root "meminfo" txt
 
   memInfoTxt <- pick $ genMemInfoLines hasInactRam
-  verifyMkReportBud root with24Flaws genKernel $ writeMemInfo memInfoTxt
+  verifyMkReportBud root withFlaws genKernel $ writeMemInfo memInfoTxt
+
+
+prop_WithSmaps26Kernel :: Bool -> FilePath -> Property
+prop_WithSmaps26Kernel hasPss root = monadicIO $ do
+  let withFlaws x =
+        x
+          { rbRamFlaws = if hasPss then Nothing else Just ExactForIsolatedMem
+          , rbSwapFlaws = Just ExactForIsolatedSwap
+          , rbHasSmaps = True
+          , rbHasPss = hasPss
+          }
+      writeSmaps txt thePid =
+        writeRootedFile root ("" +| thePid |+ "/smaps") txt
+      genKernel = do
+        patch <- chooseInteger (10, 100)
+        pure (2, 6, fromIntegral patch)
+      genSmap = if hasPss then genWithPss else genBaseSmap
+
+  (_ignored, smapsTxt) <- pick genSmap
+  verifyMkReportBud root withFlaws genKernel $ writeSmaps smapsTxt
+
+
+prop_WithSpecial26Kernel :: FilePath -> Property
+prop_WithSpecial26Kernel root = monadicIO $ do
+  let withFlaws x =
+        x
+          { rbRamFlaws = Just NoSharedMem
+          , rbSwapFlaws = Just NoSwap
+          }
+      genKernel = do
+        patch <- chooseInteger (1, 9)
+        pure (2, 6, fromIntegral patch)
+
+  verifyMkReportBud root withFlaws genKernel $ const $ pure ()
+
+
+prop_WithNoSmap26Kernel :: FilePath -> Property
+prop_WithNoSmap26Kernel root = monadicIO $ do
+  let withFlaws x =
+        x
+          { rbRamFlaws = Just SomeSharedMem
+          , rbSwapFlaws = Just NoSwap
+          }
+      genKernel = do
+        patch <- chooseInteger (10, 100)
+        pure (2, 6, fromIntegral patch)
+
+  verifyMkReportBud root withFlaws genKernel $ const $ pure ()
 
 
 genMemInfoLines :: Bool -> Gen Text
@@ -160,7 +217,7 @@ genMemInfoLines hasInact = do
 
 prop_With22Kernel :: FilePath -> Property
 prop_With22Kernel root = monadicIO $ do
-  let with22Flaws x =
+  let withFlaws x =
         x
           { rbRamFlaws = Just ExactForIsolatedMem
           , rbSwapFlaws = Just NoSwap
@@ -168,7 +225,7 @@ prop_With22Kernel root = monadicIO $ do
       genKernel = do
         patch <- genValid
         pure (2, 2, patch)
-  verifyMkReportBud root with22Flaws genKernel $ const $ pure ()
+  verifyMkReportBud root withFlaws genKernel $ const $ pure ()
 
 
 verifyMkReportBud ::

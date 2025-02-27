@@ -11,7 +11,7 @@ module MemInfo.ProcSpec (
   spec,
   genBaseSmap,
   genSmapLine,
-  genAppendSwapPss,
+  genWithPss,
 ) where
 
 import Data.Hashable (hash)

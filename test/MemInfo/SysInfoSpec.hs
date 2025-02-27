@@ -32,7 +32,7 @@ import System.MemInfo.SysInfo (
  )
 import Test.Hspec
 import Test.QuickCheck
-import Test.QuickCheck.Monadic (assert, forAllM, monadicIO, pick, run)
+import Test.QuickCheck.Monadic (PropertyM, assert, monadicIO, pick, run)
 
 
 spec :: Spec
@@ -51,9 +51,9 @@ mkReportBudSpec = do
   describe "mkReportBud" $ around useTmp $ do
     context "when the kernel is 2.4.x" $ do
       context "and there is no Inact_ ram" $ do
-        it "generates the expected ReportBud" prop_NonInactRamFlawOn24Kernel
+        it "generates the expected ReportBud" (prop_With24Kernel True)
       context "and there is Inact_ ram" $ do
-        it "generates the expected ReportBud" prop_InactRamFlowOn24Kernel
+        it "generates the expected ReportBud" (prop_With24Kernel False)
     context "when the kernel is earlier than 2.4" $ do
       it "generates the expected ReportBud" prop_With22Kernel
     context "when the kernel is later than 3.x" $ do
@@ -119,57 +119,31 @@ prop_WithAfter3xKernel hasSmaps root = monadicIO $ do
           , rbSwapFlaws = Just $ if hasSmaps then ExactForIsolatedSwap else NoSwap
           , rbHasSmaps = hasSmaps
           }
-      budGen = genExpectedBud withAfter3xFlaws genAfter3xKernel root
-  forAllM budGen $ \(thePid, version, want) -> do
-    (_ignored, smapsTxt) <- pick genBaseSmap
-    bud <- run $ do
-      initProcDir root version
-      when hasSmaps $
-        writeRootedFile root ("" +| thePid |+ "/smaps") smapsTxt
-      mkReportBud root (fromIntegral thePid :| [])
-    assert (bud == Just want)
+      writeSmaps txt thePid =
+        when hasSmaps $ writeRootedFile root ("" +| thePid |+ "/smaps") txt
+      genKernel = do
+        patch <- genValid
+        minor <- genValid
+        pure (3, minor, patch)
 
-
-genAfter3xKernel :: Gen KernelVersion
-genAfter3xKernel = do
-  patch <- genValid
-  minor <- genValid
-  pure (3, minor, patch)
-
-
-prop_NonInactRamFlawOn24Kernel :: FilePath -> Property
-prop_NonInactRamFlawOn24Kernel = prop_With24Kernel True
-
-
-prop_InactRamFlowOn24Kernel :: FilePath -> Property
-prop_InactRamFlowOn24Kernel = prop_With24Kernel False
+  (_ignored, smapsTxt) <- pick genBaseSmap
+  verifyMkReportBud root withAfter3xFlaws genKernel $ writeSmaps smapsTxt
 
 
 prop_With24Kernel :: Bool -> FilePath -> Property
 prop_With24Kernel hasInactRam root = monadicIO $ do
-  thePid <- pick genValidProcId
-  version <- pick gen24Kernel
-  memInfoTxt <- pick $ genMemInfoLines hasInactRam
-  -- (_ignored, smapsTxt) <- pick genBaseSmap
-  bud <- run $ do
-    initProcDir root version
-    writeRootedFile root "meminfo" memInfoTxt
-    -- writeRootedFile root ("" +| thePid |+ "/smaps") smapsTxt
-    mkReportBud root (fromIntegral thePid :| [])
-  let want' = expectedBud thePid root version
-      wantRamFlaw = if hasInactRam then SomeSharedMem else ExactForIsolatedMem
-      want =
-        want'
-          { rbRamFlaws = Just wantRamFlaw
+  let with24Flaws x =
+        x
+          { rbRamFlaws = Just $ if hasInactRam then SomeSharedMem else ExactForIsolatedMem
           , rbSwapFlaws = Just NoSwap
           }
-  assert (bud == Just want)
+      genKernel = do
+        patch <- genValid
+        pure (2, 4, patch)
+      writeMemInfo txt _unused = writeRootedFile root "meminfo" txt
 
-
-gen24Kernel :: Gen KernelVersion
-gen24Kernel = do
-  patch <- genValid
-  pure (2, 4, patch)
+  memInfoTxt <- pick $ genMemInfoLines hasInactRam
+  verifyMkReportBud root with24Flaws genKernel $ writeMemInfo memInfoTxt
 
 
 genMemInfoLines :: Bool -> Gen Text
@@ -191,43 +165,51 @@ prop_With22Kernel root = monadicIO $ do
           { rbRamFlaws = Just ExactForIsolatedMem
           , rbSwapFlaws = Just NoSwap
           }
-  (thePid, version, want) <- pick $ genExpectedBud with22Flaws gen22Kernel root
+      genKernel = do
+        patch <- genValid
+        pure (2, 2, patch)
+  verifyMkReportBud root with22Flaws genKernel $ const $ pure ()
+
+
+verifyMkReportBud ::
+  FilePath ->
+  (ReportBud -> ReportBud) ->
+  Gen KernelVersion ->
+  (Word16 -> IO ()) ->
+  PropertyM IO ()
+verifyMkReportBud root changeBud genKernel writeFiles = do
+  (thePid, version, want) <- pick $ genExpectedBud changeBud genKernel root
   bud <- run $ do
     initProcDir root version
+    writeFiles thePid
     mkReportBud root (fromIntegral thePid :| [])
   assert (bud == Just want)
 
 
-gen22Kernel :: Gen KernelVersion
-gen22Kernel = do
-  patch <- genValid
-  pure (2, 2, patch)
-
-
 genExpectedBud ::
-  (ReportBud -> ReportBud) -> Gen KernelVersion -> FilePath -> Gen (Word16, KernelVersion, ReportBud)
+  (ReportBud -> ReportBud) ->
+  Gen KernelVersion ->
+  FilePath ->
+  Gen (Word16, KernelVersion, ReportBud)
 genExpectedBud changeBud genKernel root = do
   thePid <- genValidProcId
-  version <- genKernel
-  pure (thePid, version, changeBud $ expectedBud thePid root version)
+  rbKernel <- genKernel
+  let theBud =
+        ReportBud
+          { rbPids = fromIntegral thePid :| []
+          , rbKernel
+          , rbHasPss = False
+          , rbHasSwapPss = False
+          , rbHasSmaps = False
+          , rbRamFlaws = Nothing
+          , rbSwapFlaws = Nothing
+          , rbProcRoot = root
+          }
+  pure (thePid, rbKernel, changeBud theBud)
 
 
 genValidProcId :: Gen Word16
 genValidProcId = genValid `suchThat` (> 1)
-
-
-expectedBud :: Word16 -> FilePath -> KernelVersion -> ReportBud
-expectedBud onePid rbProcRoot rbKernel =
-  ReportBud
-    { rbPids = fromIntegral onePid :| []
-    , rbKernel
-    , rbHasPss = False
-    , rbHasSwapPss = False
-    , rbHasSmaps = False
-    , rbRamFlaws = Nothing
-    , rbSwapFlaws = Nothing
-    , rbProcRoot
-    }
 
 
 fmtKernelVersion :: KernelVersion -> Text

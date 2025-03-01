@@ -68,6 +68,7 @@ test-suite test
   hs-source-dirs:   test
   other-modules:
     MemInfo.ChoicesSpec
+    MemInfo.Files.Smap
     MemInfo.OrphanInstances
     MemInfo.PrintSpec
     MemInfo.ProcSpec

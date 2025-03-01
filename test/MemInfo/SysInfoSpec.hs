@@ -19,8 +19,8 @@ import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Data.Word (Word16, Word8)
 import Fmt (blockMapF, build, fmt, (+|), (|+))
+import MemInfo.Files.Smap (genBaseSmap, genSmapLine, genWithPss)
 import MemInfo.OrphanInstances ()
-import MemInfo.ProcSpec (genBaseSmap, genSmapLine, genWithPss)
 import System.Directory (createDirectoryIfMissing, createFileLink, listDirectory, removePathForcibly)
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)

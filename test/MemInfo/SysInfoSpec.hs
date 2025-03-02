@@ -12,20 +12,13 @@ module MemInfo.SysInfoSpec (spec) where
 import Control.Monad (when)
 import Data.GenValidity (GenValid (..))
 import Data.List.NonEmpty (NonEmpty (..))
-import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as Text
-import qualified Data.Text.IO as Text
 import Data.Word (Word16, Word8)
-import Fmt (blockMapF, build, fmt, (+|), (|+))
+import Fmt (build, fmt, (+|), (|+))
 import MemInfo.Files.Root (initRoot, useTmp, writeRootedFile)
 import MemInfo.Files.Smap (genBaseSmap, genSmapLine, genWithPss)
 import MemInfo.OrphanInstances ()
-import System.Directory (createDirectoryIfMissing, createFileLink, listDirectory, removePathForcibly)
-import System.FilePath (takeDirectory, (</>))
-import System.MemInfo (readForOnePid')
-import System.MemInfo.Proc (MemUsage, amass)
 import System.MemInfo.SysInfo (
   KernelVersion,
   RamFlaw (..),
@@ -44,14 +37,6 @@ spec = describe "module System.MemInfo.SysInfo" $ do
   describe "parseKernelVersion" $ do
     it "should parse values from Text successfully" prop_roundtripKernelVersion
   mkReportBudSpec
-  readForOnePid'Spec
-
-
-readForOnePid'Spec :: Spec
-readForOnePid'Spec = do
-  describe "mkReportBud" $ around useTmp $ do
-    context "testing, testing" $ do
-      it "the property can work!" prop_WithMem
 
 
 mkReportBudSpec :: Spec
@@ -251,41 +236,6 @@ verifyMkReportBud root changeBud genKernel writeFiles = do
   assert (bud == Just want)
 
 
-verifyReadForOnePid ::
-  FilePath ->
-  Map Text MemUsage ->
-  Gen KernelVersion ->
-  (Word16 -> IO ()) ->
-  PropertyM IO ()
-verifyReadForOnePid root expected genKernel writeFiles = do
-  thePid <- pick genValidProcId
-  version <- pick genKernel
-  Right (theProc, theUsage) <- run $ do
-    initRoot root version
-    writeFiles thePid
-    readForOnePid' root $ fromIntegral thePid
-  assert (Map.lookup theProc expected == Just theUsage)
-
-
-prop_WithMem :: FilePath -> Property
-prop_WithMem root = monadicIO $ do
-  let fakeProc = "/usr/bin/true"
-      fakeParent = "/sbin/fake"
-      writeProcFiles txt thePid = do
-        writeRootedExeAndCmdLine root fakeParent 1
-        writeRootedExeAndCmdLine root fakeProc thePid
-        writeRootedFakeStatus root fakeProc thePid 1
-        writeRootedFile root ("" +| thePid |+ "/smaps") txt
-      genKernel = do
-        patch <- genValid
-        minor <- genValid
-        pure (3, minor, patch)
-
-  (wantedUsage, smapsTxt) <- pick genBaseSmap
-  let asReport = amass True [(fakeProc, wantedUsage)]
-  verifyReadForOnePid root asReport genKernel $ writeProcFiles smapsTxt
-
-
 genExpectedBud ::
   (ReportBud -> ReportBud) ->
   Gen KernelVersion ->
@@ -310,30 +260,3 @@ genExpectedBud changeBud genKernel root = do
 
 genValidProcId :: Gen Word16
 genValidProcId = genValid `suchThat` (> 1)
-
-
-writeRootedExeAndCmdLine :: FilePath -> Text -> Word16 -> IO ()
-writeRootedExeAndCmdLine root fakeProc procId = do
-  writeRootedFile root ("" +| procId |+ "/cmdline") fakeProc
-  writeRootedExeLink root ("" +| procId |+ "/exe") fakeProc
-
-
-writeRootedFakeStatus :: FilePath -> Text -> Word16 -> Word16 -> IO ()
-writeRootedFakeStatus root fakeProc procId parentId = do
-  let txt = fmt $ blockMapF $ statusInfoFields fakeProc parentId
-      statusPath = "" +| procId |+ "/status"
-  writeRootedFile root statusPath txt
-
-
-statusInfoFields :: Text -> Word16 -> [(Text, Text)]
-statusInfoFields fakeProc parentId =
-  [ ("Name", fakeProc)
-  , ("PPid", fmt $ build $ toInteger parentId)
-  ]
-
-
-writeRootedExeLink :: FilePath -> FilePath -> Text -> IO ()
-writeRootedExeLink root path link = do
-  let target = root </> path
-  createDirectoryIfMissing True $ takeDirectory target
-  createFileLink (Text.unpack link) target

@@ -71,6 +71,7 @@ test-suite test
     MemInfo.Files.Root
     MemInfo.Files.Smap
     MemInfo.OrphanInstances
+    MemInfo.MemInfoSpec
     MemInfo.PrintSpec
     MemInfo.ProcSpec
     MemInfo.SysInfoSpec

@@ -129,7 +129,6 @@ printProcs' indexer bud cs = do
         , choiceStyle = style
         , choiceMinMemory = mem
         } = cs
-      chosenRoot = rbProcRoot bud
       style' = fromMaybe Normal style
       toList = filterLT mem . sortBy (byPrintOrder' reversed printOrder) . Map.toList
       printEachCmd = printMemUsages bud style' showSwap onlyTotal . toList
@@ -137,9 +136,9 @@ printProcs' indexer bud cs = do
       showTotal = if onlyTotal then printTheTotal else printEachCmd
       namer = if choiceSplitArgs cs then nameAsFullCmd else nameFor
   case watchSecsMb of
-    Nothing -> readMemUsage' (namer chosenRoot) indexer bud >>= either haltLostPid showTotal
+    Nothing -> readMemUsage' namer indexer bud >>= either haltLostPid showTotal
     (Just spanSecs) -> do
-      let unfold = unfoldMemUsageAfter' (namer chosenRoot) indexer spanSecs
+      let unfold = unfoldMemUsageAfter' namer indexer spanSecs
       loopPrintMemUsages unfold bud showTotal
 
 
@@ -220,7 +219,7 @@ unfoldMemUsageAfter ::
   seconds ->
   ReportBud ->
   IO (Either [ProcessID] ((Map ProcName MemUsage, [ProcessID]), ReportBud))
-unfoldMemUsageAfter delay bud = unfoldMemUsageAfter' (nameFor (rbProcRoot bud)) dropId delay bud
+unfoldMemUsageAfter = unfoldMemUsageAfter' nameFor dropId
 
 
 -- | Like @'unfoldMemUsage'@ but computes the @'MemUsage's@ after a delay
@@ -291,7 +290,7 @@ readForOnePid' root pid = do
 
 -- | Like @'readMemUsage''@ but uses the default 'ProcNamer' and 'Indexer'
 readMemUsage :: ReportBud -> IO (Either LostPid (Map ProcName MemUsage))
-readMemUsage bud = readMemUsage' (nameFor $ rbProcRoot bud) dropId bud
+readMemUsage = readMemUsage' nameFor dropId
 
 
 {- | Loads the @'MemUsage'@ specified by a @'ReportBud'@
@@ -326,8 +325,9 @@ readNameAndStats' ::
   ProcessID ->
   IO (Either LostPid (ProcessID, ProcName, ProcUsage))
 readNameAndStats' namer bud pid = do
-  let withProcRoot = flip runReaderT $ rbProcRoot bud
-  namer pid >>= \case
+  let withProcRoot = flip runReaderT root
+      root = rbProcRoot bud
+  namer root pid >>= \case
     Left e -> pure $ Left e
     Right name ->
       withProcRoot $
@@ -382,7 +382,7 @@ pidExeExists root pid = do
 
 
 -- | Obtain the @ProcName@ as the full cmd path
-nameAsFullCmd :: ProcNamer2
+nameAsFullCmd :: ProcNamer
 nameAsFullCmd root pid = do
   let withProcRoot = flip runReaderT root
       err = NoCmdLine pid
@@ -398,7 +398,7 @@ readCmdlinePath pid = pidPath "cmdline" pid >>= liftIO . readUtf8Text
 {- | Obtain the @ProcName@ by examining the path linked by
 __{proc_root}\/pid\/exe__
 -}
-nameFromExeOnly :: ProcNamer2
+nameFromExeOnly :: ProcNamer
 nameFromExeOnly root pid = do
   let withProcRoot = flip runReaderT root
       pickSuffix = \case
@@ -424,17 +424,13 @@ nameFromExeOnly root pid = do
 
 
 -- | Functions that obtain a process name given its @pid@
-type ProcNamer = ProcessID -> IO (Either LostPid ProcName)
-
-
--- | Functions that obtain a process name given its @pid@
-type ProcNamer2 = ProcRoot -> ProcessID -> IO (Either LostPid ProcName)
+type ProcNamer = ProcRoot -> ProcessID -> IO (Either LostPid ProcName)
 
 
 {- | Obtain the @ProcName@ by examining the path linked by
 __{proc_root}\/pid\/exe__ or its parent's name if that is a better match
 -}
-nameFor :: ProcNamer2
+nameFor :: ProcNamer
 nameFor root pid =
   nameFromExeOnly root pid
     >>= either (pure . Left) (parentNameIfMatched2 root pid)

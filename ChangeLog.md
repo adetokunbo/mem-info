@@ -2,6 +2,19 @@
 
 `mem-info` uses [PVP Versioning][1].
 
+## 0.4.0.0 -- 2025-03-02
+
+- Add option --proc-root
+
+  Used to specify an alternate process root than the default, _/proc_. This
+  allows reporting of process status for other machines whose proc information
+  has been mounted or synced to a local filesystem
+  
+- Breaking changes:
+
+* [ProcNamer][2] takes an additional argument that specifies the proc filesystem root
+
+
 ## 0.3.1.0 -- 2025-02-18
 
 - Add option -m (--min-reported)
@@ -42,3 +55,4 @@
 * Initial version.
 
 [1]: https://pvp.haskell.org
+[2]: https://hackage.haskell.org/package/mem-info-0.3.1.0/docs/System-MemInfo.html#t:ProcNamer

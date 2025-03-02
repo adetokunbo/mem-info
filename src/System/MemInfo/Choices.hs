@@ -141,7 +141,7 @@ parseDiscriminateByPid =
 parseRoot :: Parser FilePath
 parseRoot =
   option str $
-    long "proc_root"
+    long "proc-root"
       <> help "the root directory of the process file hierachy"
       <> value defaultRoot
       <> showDefault

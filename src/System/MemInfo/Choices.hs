@@ -44,7 +44,10 @@ import Options.Applicative (
   optional,
   readerError,
   short,
+  showDefault,
+  str,
   switch,
+  value,
  )
 import Options.Applicative.NonEmpty (some1)
 import System.MemInfo.Prelude
@@ -62,6 +65,7 @@ data Choices = Choices
   , choiceByPid :: !Bool
   , choiceShowSwap :: !Bool
   , choiceReversed :: !Bool
+  , choiceProcRoot :: !FilePath
   , choiceWatchSecs :: !(Maybe Natural)
   , choicePidsToShow :: !(Maybe (NonEmpty ProcessID))
   , choicePrintOrder :: !(Maybe PrintOrder)
@@ -84,6 +88,7 @@ parseChoices =
     <*> parseDiscriminateByPid
     <*> parseShowSwap
     <*> parseReversed
+    <*> parseRoot
     <*> optional parseWatchPeriodSecs
     <*> optional parseChoicesPidsToShow
     <*> optional parsePrintOrder
@@ -131,6 +136,15 @@ parseDiscriminateByPid =
     short 'd'
       <> long "discriminate-by-pid"
       <> help "Show by process rather than by program"
+
+
+parseRoot :: Parser FilePath
+parseRoot =
+  option str $
+    long "proc_root"
+      <> help "the root directory of the process file hierachy"
+      <> value defaultRoot
+      <> showDefault
 
 
 parseShowSwap :: Parser Bool

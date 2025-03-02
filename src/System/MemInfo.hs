@@ -349,7 +349,7 @@ reportFlaws bud showSwap onlyTotal = do
 
 
 verify :: Choices -> IO ReportBud
-verify cs = verify' defaultRoot (choicePidsToShow cs) >>= either (haltErr . fmtNotRun) pure
+verify cs = verify' (choiceProcRoot cs) (choicePidsToShow cs) >>= either (haltErr . fmtNotRun) pure
 
 
 verify' :: FilePath -> Maybe (NonEmpty ProcessID) -> IO (Either NotRun ReportBud)

@@ -22,6 +22,7 @@ module System.MemInfo.Choices (
   memReader,
   cmdInfo,
   getChoices,
+  defaultRoot,
 ) where
 
 import Data.Fixed (Deci)
@@ -270,3 +271,7 @@ memReader x = do
   (num, rest) <- rational (Text.stripStart x)
   (power, extra) <- powerReader rest
   pure (Mem power num, extra)
+
+
+defaultRoot :: FilePath
+defaultRoot = "/proc"

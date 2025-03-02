@@ -79,6 +79,7 @@ import System.MemInfo.Choices (
   PrintOrder (..),
   Style (..),
   asFloat,
+  defaultRoot,
   getChoices,
  )
 import System.MemInfo.Prelude
@@ -265,7 +266,7 @@ unfoldMemUsage namer mkCmd bud = do
 root is the linux default
 -}
 readForOnePid :: ProcessID -> IO (Either NotRun (ProcName, MemUsage))
-readForOnePid = readForOnePid' procRoot
+readForOnePid = readForOnePid' defaultRoot
 
 
 -- | Load the @'MemUsage'@ of a program specified by its @ProcessID@
@@ -348,7 +349,7 @@ reportFlaws bud showSwap onlyTotal = do
 
 
 verify :: Choices -> IO ReportBud
-verify cs = verify' procRoot (choicePidsToShow cs) >>= either (haltErr . fmtNotRun) pure
+verify cs = verify' defaultRoot (choicePidsToShow cs) >>= either (haltErr . fmtNotRun) pure
 
 
 verify' :: FilePath -> Maybe (NonEmpty ProcessID) -> IO (Either NotRun ReportBud)
@@ -358,10 +359,6 @@ verify' root pidsMb = do
   case pidsMb of
     Just pids -> checkAllExist root pids >>= thenMkBud
     Nothing -> allKnownProcs root >>= thenMkBud
-
-
-procRoot :: FilePath
-procRoot = "/proc"
 
 
 -- | The root of the process file hierarchy

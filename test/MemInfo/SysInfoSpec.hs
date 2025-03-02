@@ -19,11 +19,11 @@ import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Data.Word (Word16, Word8)
 import Fmt (blockMapF, build, fmt, (+|), (|+))
+import MemInfo.Files.Root (initRoot, useTmp, writeRootedFile)
 import MemInfo.Files.Smap (genBaseSmap, genSmapLine, genWithPss)
 import MemInfo.OrphanInstances ()
 import System.Directory (createDirectoryIfMissing, createFileLink, listDirectory, removePathForcibly)
 import System.FilePath (takeDirectory, (</>))
-import System.IO.Temp (withSystemTempDirectory)
 import System.MemInfo (readForOnePid')
 import System.MemInfo.Proc (MemUsage, amass)
 import System.MemInfo.SysInfo (
@@ -45,10 +45,6 @@ spec = describe "module System.MemInfo.SysInfo" $ do
     it "should parse values from Text successfully" prop_roundtripKernelVersion
   mkReportBudSpec
   readForOnePid'Spec
-
-
-useTmp :: (FilePath -> IO a) -> IO a
-useTmp = withSystemTempDirectory "mem-info-sysinfo"
 
 
 readForOnePid'Spec :: Spec
@@ -249,7 +245,7 @@ verifyMkReportBud ::
 verifyMkReportBud root changeBud genKernel writeFiles = do
   (thePid, version, want) <- pick $ genExpectedBud changeBud genKernel root
   bud <- run $ do
-    initProcDir root version
+    initRoot root version
     writeFiles thePid
     mkReportBud root (fromIntegral thePid :| [])
   assert (bud == Just want)
@@ -265,7 +261,7 @@ verifyReadForOnePid root expected genKernel writeFiles = do
   thePid <- pick genValidProcId
   version <- pick genKernel
   Right (theProc, theUsage) <- run $ do
-    initProcDir root version
+    initRoot root version
     writeFiles thePid
     readForOnePid' root $ fromIntegral thePid
   assert (Map.lookup theProc expected == Just theUsage)
@@ -316,17 +312,6 @@ genValidProcId :: Gen Word16
 genValidProcId = genValid `suchThat` (> 1)
 
 
-fmtKernelVersion :: KernelVersion -> Text
-fmtKernelVersion (major, minor, patch) =
-  "" +| toInteger major |+ "." +| toInteger minor |+ "." +| toInteger patch |+ ""
-
-
-initProcDir :: FilePath -> KernelVersion -> IO ()
-initProcDir root version = do
-  clearDirectory root
-  writeRootedFile root "sys/kernel/osrelease" $ fmtKernelVersion version
-
-
 writeRootedExeAndCmdLine :: FilePath -> Text -> Word16 -> IO ()
 writeRootedExeAndCmdLine root fakeProc procId = do
   writeRootedFile root ("" +| procId |+ "/cmdline") fakeProc
@@ -347,19 +332,8 @@ statusInfoFields fakeProc parentId =
   ]
 
 
-writeRootedFile :: FilePath -> FilePath -> Text -> IO ()
-writeRootedFile root path txt = do
-  let target = root </> path
-  createDirectoryIfMissing True $ takeDirectory target
-  Text.writeFile target txt
-
-
 writeRootedExeLink :: FilePath -> FilePath -> Text -> IO ()
 writeRootedExeLink root path link = do
   let target = root </> path
   createDirectoryIfMissing True $ takeDirectory target
   createFileLink (Text.unpack link) target
-
-
-clearDirectory :: FilePath -> IO ()
-clearDirectory fp = listDirectory fp >>= mapM_ removePathForcibly

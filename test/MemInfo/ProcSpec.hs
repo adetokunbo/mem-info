@@ -7,7 +7,9 @@ Copyright   : (c) 2023 Tim Emiola
 Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 -}
-module MemInfo.ProcSpec (spec) where
+module MemInfo.ProcSpec (
+  spec,
+) where
 
 import Data.Hashable (hash)
 import Data.Maybe (isNothing)
@@ -15,6 +17,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word (Word16)
 import Fmt (blockMapF, build, fmt, (+|), (|+))
+import MemInfo.Files.Smap (genBaseSmap, genSmapLine, genWithPss)
 import MemInfo.OrphanInstances ()
 import Numeric.Natural (Natural)
 import System.MemInfo.Proc
@@ -176,65 +179,16 @@ ppZero =
     }
 
 
-genSmapLine :: Text -> Gen (Int, Text)
-genSmapLine prefix = do
-  x <- genValid :: Gen Word16
-  let txt = "" +| prefix |+ ": " +| x |+ " kB"
-  pure (fromIntegral x, txt)
-
-
 genSmap :: Gen (ProcUsage, Text)
-genSmap = oneof [genBaseSmap, genWithSwapPss, genWithPss]
+genSmap = oneof [genBaseSmap, genWithSwapPss, genWithPss, genWithPss >>= genAppendSwapPss]
 
 
 genWithSwapPss :: Gen (ProcUsage, Text)
-genWithSwapPss = do
-  (pp, without) <- genBaseSmap
+genWithSwapPss = genBaseSmap >>= genAppendSwapPss
+
+
+genAppendSwapPss :: (ProcUsage, Text) -> Gen (ProcUsage, Text)
+genAppendSwapPss (pp, initial) = do
   (swapPss, txt) <- genSmapLine "SwapPss"
-  let content = without <> "\n" <> txt
+  let content = initial <> "\n" <> txt
   pure (pp {puSwap = swapPss, puMemId = hash content}, content)
-
-
-genWithPss :: Gen (ProcUsage, Text)
-genWithPss = do
-  (pp, without, puPrivateHuge) <- genBaseSmap'
-  (pss, txt) <- genSmapLine "Pss"
-  let content = without <> "\n" <> txt
-      newShared = pss - (puPrivate pp - puPrivateHuge)
-  pure (pp {puShared = newShared, puMemId = hash content}, content)
-
-
-genBaseSmap :: Gen (ProcUsage, Text)
-genBaseSmap = do
-  (pp, txt, _) <- genBaseSmap'
-  pure (pp, txt)
-
-
-genBaseSmap' :: Gen (ProcUsage, Text, Int)
-genBaseSmap' = do
-  (clean, cleanTxt) <- genSmapLine "Private_Clean"
-  (dirty, dirtyTxt) <- genSmapLine "Private_Dirty"
-  (sharedClean, shCleanTxt) <- genSmapLine "Shared_Clean"
-  (sharedDirty, shDirtyTxt) <- genSmapLine "Shared_Dirty"
-  (privateHuge, phTxt) <- genSmapLine "Private_Hugetlb"
-  (sharedHuge, shTxt) <- genSmapLine "Shared_Hugetlb"
-  (swap, swapTxt) <- genSmapLine "Swap"
-  let pp =
-        ppZero
-          { puPrivate = clean + dirty + privateHuge
-          , puMemId = hash content
-          , puSwap = swap
-          , puSharedHuge = sharedHuge
-          , puShared = sharedClean + sharedDirty
-          }
-      content =
-        Text.unlines
-          [ phTxt
-          , dirtyTxt
-          , cleanTxt
-          , swapTxt
-          , shTxt
-          , shCleanTxt
-          , shDirtyTxt
-          ]
-  pure (pp, content, privateHuge)

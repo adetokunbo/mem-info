@@ -27,6 +27,7 @@ import System.MemInfo.Choices (
   Power,
   PrintOrder,
   Style,
+  defaultRoot,
  )
 import System.MemInfo.Proc (ExeInfo (..), StatusInfo)
 import System.Posix.Types (CPid (..), ProcessID)
@@ -106,6 +107,7 @@ instance GenValid Choices where
           <*> genValid
           <*> genValid
           <*> genValid
+          <*> pure defaultRoot
           <*> genPositiveMb
           <*> genPids
           <*> genValid

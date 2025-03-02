@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -36,6 +37,7 @@ module System.MemInfo.SysInfo (
   fickleSharing,
 ) where
 
+import Control.Monad ((>=>))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
@@ -58,12 +60,12 @@ fickleSharing k = k >= (2, 6, 1) && k <= (2, 6, 9)
 
 
 -- | Determines the version of the Linux kernel on the current system.
-readKernelVersion :: IO (Maybe KernelVersion)
-readKernelVersion = parseKernelVersion <$> Text.readFile kernelVersionPath
+readKernelVersion :: FilePath -> IO (Maybe KernelVersion)
+readKernelVersion = fmap parseKernelVersion . Text.readFile . kernelVersionPath
 
 
-kernelVersionPath :: String
-kernelVersionPath = "/proc/sys/kernel/osrelease"
+kernelVersionPath :: FilePath -> FilePath
+kernelVersionPath root = "" +| root |+ "/sys/kernel/osrelease"
 
 
 -- | Parses @Text@ into a @'KernelVersion'@
@@ -93,6 +95,7 @@ data ReportBud = ReportBud
   , rbHasSmaps :: !Bool
   , rbRamFlaws :: !(Maybe RamFlaw)
   , rbSwapFlaws :: !(Maybe SwapFlaw)
+  , rbProcRoot :: !FilePath
   }
   deriving (Eq, Show)
 
@@ -151,35 +154,30 @@ fmtSwapFlaws ExactForIsolatedSwap =
 -}
 checkForFlaws :: ReportBud -> IO ReportBud
 checkForFlaws bud = do
-  let pid = NE.head $ rbPids bud
-      version = rbKernel bud
-      fickleShared = fickleSharing version
+  let memInfoPath = meminfoPathOf (rbProcRoot bud)
       ReportBud
         { rbHasPss = hasPss
         , rbHasSmaps = hasSmaps
         , rbHasSwapPss = hasSwapPss
+        , rbKernel = version
         } = bud
   (rbRamFlaws, rbSwapFlaws) <- case version of
     (2, 4, _patch) -> do
-      let memInfoPath = pidPath "meminfo" pid
-          alt = (Just SomeSharedMem, Just NoSwap)
-          best = (Just ExactForIsolatedMem, Just NoSwap)
-          containsInact = Text.isInfixOf "Inact_"
-          checkInact x = if containsInact x then best else alt
-      doesFileExist memInfoPath >>= \hasMemInfo ->
-        if hasMemInfo
-          then pure alt
-          else checkInact <$> readUtf8Text memInfoPath
+      let hasInact = Text.isInfixOf "Inact_" <$> readUtf8Text memInfoPath
+          andHasInact x = if x then hasInact else pure False
+          memInfoMem x = if x then SomeSharedMem else ExactForIsolatedMem
+          mkFlawPair x = (Just $ memInfoMem x, Just NoSwap)
+          isInactPresent = doesFileExist >=> andHasInact
+      mkFlawPair <$> isInactPresent memInfoPath
     (2, 6, _patch) -> do
-      let withSmaps = if hasPss then best else alt
-          alt = (Just ExactForIsolatedMem, Just ExactForIsolatedSwap)
-          best = (Nothing, Just ExactForIsolatedSwap)
-          withNoSmaps = Just $ if fickleShared then NoSharedMem else SomeSharedMem
-      pure $ if hasSmaps then withSmaps else (withNoSmaps, Just NoSwap)
+      pure $
+        if
+          | hasSmaps && hasPss -> (Nothing, Just ExactForIsolatedSwap)
+          | hasSmaps -> (Just ExactForIsolatedMem, Just ExactForIsolatedSwap)
+          | fickleSharing version -> (Just NoSharedMem, Just NoSwap)
+          | otherwise -> (Just SomeSharedMem, Just NoSwap)
     (major, _minor, _patch) | major > 2 && hasSmaps -> do
-      let alt = (Nothing, Just ExactForIsolatedSwap)
-          best = (Nothing, Nothing)
-      pure $ if hasSwapPss then best else alt
+      pure (Nothing, if hasSwapPss then Nothing else Just ExactForIsolatedSwap)
     _other -> pure (Just ExactForIsolatedMem, Just NoSwap)
   pure $ bud {rbRamFlaws, rbSwapFlaws}
 
@@ -188,32 +186,57 @@ checkForFlaws bud = do
 
 Generates values for the other fields by inspecting the system
 
-The result is @Nothing@ only when the @KernelVersion@ cannot be determined
+The result is @Nothing@ when either
+
+- the process root is not accessible
+- the @KernelVersion@ cannot be determined
 -}
-mkReportBud :: NonEmpty ProcessID -> IO (Maybe ReportBud)
-mkReportBud rbPids = do
+mkReportBud :: FilePath -> NonEmpty ProcessID -> IO (Maybe ReportBud)
+mkReportBud rbProcRoot rbPids = do
   let firstPid = NE.head rbPids
-      smapsPath = pidPath "smaps" firstPid
+      smapsPath = pidPath rbProcRoot "smaps" firstPid
       hasPss = Text.isInfixOf "Pss:"
       hasSwapPss = Text.isInfixOf "SwapPss:"
       memtypes x = (hasPss x, hasSwapPss x)
-  rbHasSmaps <- doesFileExist smapsPath
-  (rbHasPss, rbHasSwapPss) <- memtypes <$> readUtf8Text smapsPath
-  readKernelVersion >>= \case
-    Nothing -> pure Nothing
-    Just rbKernel ->
-      fmap Just $
-        checkForFlaws $
-          ReportBud
-            { rbPids
-            , rbKernel
-            , rbHasPss
-            , rbHasSwapPss
-            , rbHasSmaps
-            , rbRamFlaws = Nothing
-            , rbSwapFlaws = Nothing
-            }
+  rootAccessible <- canAccessRoot rbProcRoot
+  if not rootAccessible
+    then pure Nothing
+    else do
+      rbHasSmaps <- doesFileExist smapsPath
+      (rbHasPss, rbHasSwapPss) <-
+        if rbHasSmaps
+          then memtypes <$> readUtf8Text smapsPath
+          else pure (False, False)
+      readKernelVersion rbProcRoot >>= \case
+        Nothing -> pure Nothing
+        Just rbKernel ->
+          fmap Just $
+            checkForFlaws $
+              ReportBud
+                { rbPids
+                , rbKernel
+                , rbHasPss
+                , rbHasSwapPss
+                , rbHasSmaps
+                , rbRamFlaws = Nothing
+                , rbSwapFlaws = Nothing
+                , rbProcRoot
+                }
 
 
-pidPath :: String -> ProcessID -> FilePath
-pidPath base pid = "/proc/" +| toInteger pid |+ "/" +| base |+ ""
+pidPath :: FilePath -> FilePath -> ProcessID -> FilePath
+pidPath root base pid = "" +| root |+ "/" +| toInteger pid |+ "/" +| base |+ ""
+
+
+meminfoPathOf :: FilePath -> FilePath
+meminfoPathOf root = "" +| root |+ "/meminfo"
+
+
+canAccessRoot :: FilePath -> IO Bool
+canAccessRoot root = do
+  doesRootExist <- doesDirectoryExist root
+  if not doesRootExist
+    then pure False
+    else do
+      p <- getPermissions root
+      pure $ readable p && searchable p

@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               mem-info
-version:            0.3.1.0
+version:            0.4.0.0
 synopsis:           Print the core memory usage of programs
 description:
   A utility to accurately report the core memory usage of programs.
@@ -51,6 +51,7 @@ library
     , filepath              >=1.4.2  && <1.6
     , fmt                   >=0.6.3  && <0.8
     , hashable              >=1.4.2  && <1.6
+    , mtl                   >=2.0 && <2.3 || > 2.3 && <2.5
     , optparse-applicative  >=0.18.1 && <0.19
     , text                  >=1.2.3  && <2.2
     , unix                  >=2.7.2  && <2.9
@@ -67,7 +68,10 @@ test-suite test
   hs-source-dirs:   test
   other-modules:
     MemInfo.ChoicesSpec
+    MemInfo.Files.Root
+    MemInfo.Files.Smap
     MemInfo.OrphanInstances
+    MemInfo.MemInfoSpec
     MemInfo.PrintSpec
     MemInfo.ProcSpec
     MemInfo.SysInfoSpec
@@ -76,6 +80,9 @@ test-suite test
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N -Wall -fwarn-tabs
   build-depends:
     , base
+    , filepath
+    , containers
+    , directory
     , fmt
     , genvalidity
     , genvalidity-hspec
@@ -86,6 +93,7 @@ test-suite test
     , optparse-applicative  >=0.18.1 && <0.19
     , QuickCheck
     , text
+    , temporary             >= 1.2 && < 1.4
     , unix
 
 -- printmem is the printmem command

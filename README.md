@@ -51,7 +51,7 @@ E.g, the following commands should suffice
 ```bash
 $ # choose a directory on your PATH; this example uses ${HOME}/.local/bin
 $ my_local_bin=${HOME}/.local/bin/printmem
-$ release_url="https://github.com/adetokunbo/mem-info/releases/download/v0.3.1.0/printmem"
+$ release_url="https://github.com/adetokunbo/mem-info/releases/download/v0.4.0.0/printmem"
 $ # download it
 $ wget -O $my_local_bin $release_url
 $ # make it executable
@@ -62,7 +62,7 @@ $ chmod u+x $my_local_bin
 
 ```
 Usage: printmem [-s|--split-args] [-t|--total] [-d|--discriminate-by-pid]
-                [-S|--show_swap] [-r|--reverse] [-w|--watch N]
+                [-S|--show_swap] [-r|--reverse] [--proc-root ARG] [-w|--watch N]
                 [(-p|--pids <pid1> [ -p pid2 ... -p pidN ])]
                 [-b|--order-by < private | swap | shared | count >]
                 [-y|--output-style < [normal] | csv >]
@@ -76,6 +76,8 @@ Available options:
   -S,--show_swap           Show swap information
   -r,--reverse             Reverses the output order so that output descends on
                            the sorting field
+  --proc-root ARG          the root directory of the process file hierachy
+                           (default: "/proc")
   -w,--watch N             Measure and show memory every N seconds (N > 0)
   -p,--pids <pid1> [ -p pid2 ... -p pidN ]
                            Only show memory usage of the specified PIDs

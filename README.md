@@ -51,7 +51,7 @@ E.g, the following commands should suffice
 ```bash
 $ # choose a directory on your PATH; this example uses ${HOME}/.local/bin
 $ my_local_bin=${HOME}/.local/bin/printmem
-$ release_url="https://github.com/adetokunbo/mem-info/releases/download/v0.4.0.0/printmem"
+$ release_url="https://github.com/adetokunbo/mem-info/releases/download/v0.4.1.0/printmem"
 $ # download it
 $ wget -O $my_local_bin $release_url
 $ # make it executable
@@ -61,14 +61,16 @@ $ chmod u+x $my_local_bin
 ## Usage
 
 ```
-Usage: printmem [-s|--split-args] [-t|--total] [-d|--discriminate-by-pid]
-                [-S|--show_swap] [-r|--reverse] [--proc-root ARG] [-w|--watch N]
+Usage: printmem [--version] [-s|--split-args] [-t|--total]
+                [-d|--discriminate-by-pid] [-S|--show_swap] [-r|--reverse]
+                [--proc-root ARG] [-w|--watch N]
                 [(-p|--pids <pid1> [ -p pid2 ... -p pidN ])]
                 [-b|--order-by < private | swap | shared | count >]
                 [-y|--output-style < [normal] | csv >]
                 [-m|--min-reported <threshold>[K|M|G|T]iB, e.g 1.1KiB | 2MiB | 4.0GiB]
 
 Available options:
+  --version                Show the version and exit
   -h,--help                Show this help text
   -s,--split-args          Show and separate by all command line arguments
   -t,--total               Only show the total value

@@ -2,6 +2,10 @@
 
 `mem-info` uses [PVP Versioning][1].
 
+## 0.4.1.0 -- 2025-03-03
+
+- Add a --version flag that prints the version and exits
+
 ## 0.4.0.0 -- 2025-03-02
 
 - Add option --proc-root

@@ -28,6 +28,7 @@ module System.MemInfo.Choices (
 import Data.Fixed (Deci)
 import qualified Data.Text as Text
 import Data.Text.Read (Reader, rational)
+import Data.Version (showVersion)
 import GHC.Generics (Generic)
 import Options.Applicative (
   Parser,
@@ -38,6 +39,7 @@ import Options.Applicative (
   help,
   helper,
   info,
+  infoOption,
   long,
   metavar,
   option,
@@ -50,6 +52,7 @@ import Options.Applicative (
   value,
  )
 import Options.Applicative.NonEmpty (some1)
+import Paths_mem_info (version)
 import System.MemInfo.Prelude
 
 
@@ -77,7 +80,14 @@ data Choices = Choices
 
 -- | Specifies a command line that when parsed will provide 'Choices'
 cmdInfo :: ParserInfo Choices
-cmdInfo = info (helper <*> parseChoices) mempty
+cmdInfo = info (versionOption <*> helper <*> parseChoices) mempty
+
+
+versionOption :: Parser (a -> a)
+versionOption =
+  infoOption
+    ("printmem version " ++ showVersion version)
+    (long "version" <> help "Show the version and exit")
 
 
 parseChoices :: Parser Choices

@@ -2,6 +2,10 @@
 
 `mem-info` uses [PVP Versioning][1].
 
+## 0.4.1.0 -- 2025-03-03
+
+- Add a --version flag that prints the version and exits
+
 ## 0.4.0.0 -- 2025-03-02
 
 - Add option --proc-root
@@ -12,7 +16,7 @@
   
 - Breaking changes:
 
-* [ProcNamer][2] takes an additional argument that specifies the proc filesystem root
+  - [ProcNamer][2] takes an additional argument that specifies the proc filesystem root
 
 
 ## 0.3.1.0 -- 2025-02-18
@@ -55,4 +59,4 @@
 * Initial version.
 
 [1]: https://pvp.haskell.org
-[2]: https://hackage.haskell.org/package/mem-info-0.3.1.0/docs/System-MemInfo.html#t:ProcNamer
+[2]: https://hackage.haskell.org/package/mem-info/docs/System-MemInfo.html#t:ProcNamer

@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               mem-info
-version:            0.4.0.0
+version:            0.4.1.0
 synopsis:           Print the core memory usage of programs
 description:
   A utility to accurately report the core memory usage of programs.
@@ -33,6 +33,7 @@ source-repository head
   location: https://github.com/adetokunbo/mem-info.git
 
 library
+  autogen-modules:  Paths_mem_info
   exposed-modules:
     System.MemInfo
     System.MemInfo.Choices
@@ -40,6 +41,7 @@ library
     System.MemInfo.Proc
     System.MemInfo.SysInfo
   other-modules:
+    Paths_mem_info
     System.MemInfo.Prelude
 
   hs-source-dirs:   src

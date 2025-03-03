@@ -33,6 +33,7 @@ source-repository head
   location: https://github.com/adetokunbo/mem-info.git
 
 library
+  autogen-modules:  Paths_mem_info
   exposed-modules:
     System.MemInfo
     System.MemInfo.Choices
@@ -40,6 +41,7 @@ library
     System.MemInfo.Proc
     System.MemInfo.SysInfo
   other-modules:
+    Paths_mem_info
     System.MemInfo.Prelude
 
   hs-source-dirs:   src

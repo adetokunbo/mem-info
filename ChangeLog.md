@@ -2,6 +2,10 @@
 
 `mem-info` uses [PVP Versioning][1].
 
+## 0.4.1.1 -- 2025-06-04
+
+- Relax the upper bound on the optparse-applicative dependency
+
 ## 0.4.1.0 -- 2025-03-03
 
 - Add a --version flag that prints the version and exits

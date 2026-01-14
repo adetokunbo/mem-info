@@ -2,6 +2,10 @@
 
 `mem-info` uses [PVP Versioning][1].
 
+## 0.4.1.2 -- 2026-01-14
+
+- Relax the upper bound on the containers dependency
+
 ## 0.4.1.1 -- 2025-06-04
 
 - Relax the upper bound on the optparse-applicative dependency

@@ -49,6 +49,7 @@ module System.MemInfo (
   -- * Print /MemUsage/
   printUsage',
   printUsage,
+  printUsages,
 
   -- * The current process ID
   selfId,
@@ -56,6 +57,7 @@ module System.MemInfo (
 
   -- * Convenient re-exports
   mkReportBud,
+  defaultRoot,
   ProcessID,
   AsCmdName (..),
 ) where
@@ -171,6 +173,14 @@ printUsage' (name, mu) showSwap = Text.putStrLn $ fmtMemUsage showSwap name mu
 -- | Like @'printUsage''@, but alway shows the swap size
 printUsage :: (AsCmdName a) => (a, MemUsage) -> IO ()
 printUsage = flip printUsage' True
+
+
+-- | Like @'printUsage' for several @processIDs@
+printUsages ::
+  (AsCmdName a) =>
+  Map a MemUsage ->
+  IO ()
+printUsages = mapM_ printUsage . Map.toAscList
 
 
 onlyPrintTotal :: (AsCmdName k) => ReportBud -> Bool -> Bool -> [(k, MemUsage)] -> IO ()

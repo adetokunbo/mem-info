@@ -179,24 +179,47 @@ $ nix-build static.nix
 The functions exported by `System.MemInfo` can be used to obtain memory usage
 within haskell programs.
 
-#### Example: print the program name and memory usage of a single process
+#### Example: print the program name and memory usage of specified processes
 
 ```haskell
-import System.MemInfo (
-  readForOnePid,
-  printUsage,
-  ProcessID
-)
+module Main (main) where
 
-showUsageOf :: ProcessID -> IO ()
-showUsageOf pid = do
-  orError <- readForOnePid pid
-  case orError of
-    Left err -> putStrLn $ show err
-    Right usage -> printUsage usage
+import Data.List.NonEmpty (NonEmpty ((:|)))
+import System.Environment (getArgs)
+import System.MemInfo (
+  defaultRoot,
+  mkReportBud,
+  printUsage,
+  printUsages,
+  readForOnePid,
+  readMemUsage,
+  selfId',
+ )
+import Text.Read (readEither)
+
 
 main :: IO ()
-main = showUsageOf 96334 -- replace with your own process ID
+main = do
+  let readPrintPid p = readForOnePid p >>= ifOkDo printUsage
+      readProcID = either (const $ Left "bad pid") Right . readEither
+      toProcessID = ifOkDo pure . readProcID
+  args <- getArgs
+  case args of
+    [] -> selfId' >>= readPrintPid
+    [x] -> toProcessID x >>= readPrintPid
+    xs -> do
+      let toEither = maybe (Left "odd: could not make a bud") Right
+          mkReportBud' root pids = mkReportBud root pids >>= pure . toEither
+      n : ns <- mapM toProcessID xs
+      mkReportBud' defaultRoot (n :| ns) >>= ifOkDo readMemUsage >>= ifOkDo printUsages
+
+
+ifOkDo :: (Show a) => (b -> IO c) -> Either a b -> IO c
+ifOkDo =
+  let core = "Usage: mem_pids [args]"
+      fail' x | show x == "" = fail core
+      fail' x = fail $ core ++ ": error: " ++ show x
+   in either fail'
 ```
 
 #### Example: periodically check the memory of some processes
@@ -205,7 +228,7 @@ main = showUsageOf 96334 -- replace with your own process ID
 import Data.List.NonEmpty (NonEmpty, (:|))
 import System.MemInfo (
   mkReportBud,
-  printUsage,
+  printMemUsage,
   unfoldMemUsageAfter,
   ProcessID
 )

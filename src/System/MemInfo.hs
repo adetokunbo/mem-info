@@ -49,15 +49,22 @@ module System.MemInfo (
   -- * Print /MemUsage/
   printUsage',
   printUsage,
+  printUsages,
+
+  -- * The current process ID
+  selfId,
+  selfId',
 
   -- * Convenient re-exports
   mkReportBud,
+  defaultRoot,
   ProcessID,
   AsCmdName (..),
 ) where
 
+import Control.Exception (Exception)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader (MonadReader (ask), runReaderT)
+import Control.Monad.Reader (MonadReader (ask), asks, runReaderT)
 import Data.Bifunctor (Bifunctor (..))
 import Data.Functor ((<&>))
 import Data.List (sortBy)
@@ -166,6 +173,14 @@ printUsage' (name, mu) showSwap = Text.putStrLn $ fmtMemUsage showSwap name mu
 -- | Like @'printUsage''@, but alway shows the swap size
 printUsage :: (AsCmdName a) => (a, MemUsage) -> IO ()
 printUsage = flip printUsage' True
+
+
+-- | Like @'printUsage' for several @processIDs@
+printUsages ::
+  (AsCmdName a) =>
+  Map a MemUsage ->
+  IO ()
+printUsages = mapM_ printUsage . Map.toAscList
 
 
 onlyPrintTotal :: (AsCmdName k) => ReportBud -> Bool -> Bool -> [(k, MemUsage)] -> IO ()
@@ -453,7 +468,11 @@ data NotRun
   | NeedsRoot
   | OddKernel
   | NoRecords
+  | BadSelfId
   deriving (Eq, Show)
+
+
+instance Exception NotRun
 
 
 fmtNotRun :: NotRun -> Text
@@ -462,6 +481,7 @@ fmtNotRun (PidLost x) = fmtLostPid x
 fmtNotRun OddKernel = "unrecognized kernel version"
 fmtNotRun (MissingPids pids) = "no records available for: " +| listF (toInteger <$> pids) |+ ""
 fmtNotRun NoRecords = "could not find any process records"
+fmtNotRun BadSelfId = "self value was not a valid process ID"
 
 
 {- | Represents reasons a specified @pid@ may not have memory
@@ -517,6 +537,21 @@ statusInfo pid = do
       fromBadStatus NoParent = NoStatusParent pid
   statusPath <- pidPath "status" pid
   first fromBadStatus . parseStatusInfo <$> liftIO (readUtf8Text statusPath)
+
+
+-- | the processId of the current running process
+selfId :: (MonadReader ProcRoot m, MonadIO m) => m ProcessID
+selfId = do
+  let mkSelfPath root = "" +| root |+ "/self"
+  selfText <- asks mkSelfPath >>= liftIO . getSymbolicLinkTarget
+  case readMaybe selfText of
+    Just procId -> pure procId
+    Nothing -> liftIO $ throwIO BadSelfId
+
+
+-- | Like 'selfId' using the default ProcRoot
+selfId' :: IO ProcessID
+selfId' = runReaderT selfId defaultRoot
 
 
 parseCmdline :: Text -> Maybe (NonEmpty Text)

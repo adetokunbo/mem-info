@@ -2,6 +2,16 @@
 
 `mem-info` uses [PVP Versioning][1].
 
+## 0.4.2.0 -- 2026-02-11
+
+- Add the function `selfId` to System.MemInfo to allow the current process
+  to access its own process information
+
+- Adds `printUsages` and `defaultRoot` as exports to System.MemInfo
+
+- Add an example executable `mem_pids` that uses System.MemInfo functions as
+  library functions
+
 ## 0.4.1.2 -- 2026-01-14
 
 - Relax the upper bound on the containers dependency
@@ -21,7 +31,7 @@
   Used to specify an alternate process root than the default, _/proc_. This
   allows reporting of process status for other machines whose proc information
   has been mounted or synced to a local filesystem
-  
+
 - Breaking changes:
 
   - [ProcNamer][2] takes an additional argument that specifies the proc filesystem root

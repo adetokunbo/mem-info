@@ -43,3 +43,6 @@ jobs:
     - name: Build and test
       run: |
         nix-shell --argstr ghc ${{ matrix.ghc }} --run "cabal build all && cabal test all"
+    - name: Build and run a simple example
+      run: |
+        nix-shell --argstr ghc ${{ matrix.ghc }} --run "cabal run exe:mem_pids"

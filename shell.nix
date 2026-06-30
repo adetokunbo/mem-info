@@ -1,5 +1,6 @@
+{ ghc ? (import ./dev.nix).compiler-nix-name }:
 let
-  project = import ./default.nix {};
+  project = import ./default.nix { inherit ghc; };
 in
   project.shellFor {
     # Don't build haddock to optimize build time
